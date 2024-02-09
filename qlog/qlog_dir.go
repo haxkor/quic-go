@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/quic-go/quic-go/internal/utils"
 	"github.com/quic-go/quic-go/logging"
@@ -39,7 +40,8 @@ func qlogDirTracer(p logging.Perspective, connID logging.ConnectionID, label str
 			log.Fatalf("failed to create qlog dir %s: %v", qlogDir, err)
 		}
 	}
-	path := fmt.Sprintf("%s/%s_%s.qlog", strings.TrimRight(qlogDir, "/"), connID, label)
+	timestamp := time.Now().Format("2006-01-02-15:04:05")
+	path := fmt.Sprintf("%s/%s%s.qlog", strings.TrimRight(qlogDir, "/"), timestamp, label)
 	f, err := os.Create(path)
 	if err != nil {
 		log.Printf("Failed to create qlog file %s: %s", path, err.Error())
