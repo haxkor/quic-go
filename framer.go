@@ -8,6 +8,7 @@ import (
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/internal/utils/ringbuffer"
 	"github.com/quic-go/quic-go/internal/wire"
+	"github.com/quic-go/quic-go/logging"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -40,11 +41,16 @@ type framerI struct {
 
 var _ framer = &framerI{}
 
-func newFramer(streamGetter streamGetter) framer {
+func newFramer(streamGetter streamGetter, tracer *logging.ConnectionTracer) framer {
 	return &framerI{
 		streamGetter:  streamGetter,
 		activeStreams: make(map[protocol.StreamID]struct{}),
+		streamQueue:   ringbuffer.RingBuffer[protocol.StreamID]{Tracer: tracer},
 	}
+}
+
+func (f *framerI) SetTracerOfFramerStreamQueue(tracer *logging.ConnectionTracer) {
+	f.streamQueue.Tracer = tracer
 }
 
 func (f *framerI) HasData() bool {

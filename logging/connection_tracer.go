@@ -38,6 +38,8 @@ type ConnectionTracer struct {
 	// Close is called when the connection is closed.
 	Close func()
 	Debug func(name, msg string)
+
+	NewFrameToRingbuffer func()
 }
 
 // NewMultiplexedConnectionTracer creates a new connection tracer that multiplexes events to multiple tracers.

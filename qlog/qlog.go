@@ -156,6 +156,9 @@ func NewConnectionTracer(w io.WriteCloser, p protocol.Perspective, odcid protoco
 		Close: func() {
 			t.Close()
 		},
+		NewFrameToRingbuffer: func() {
+			t.NewFrameToRingbuffer()
+		},
 	}
 }
 
@@ -594,5 +597,11 @@ func (t *connectionTracer) Debug(name, msg string) {
 		name: name,
 		msg:  msg,
 	})
+	t.mutex.Unlock()
+}
+
+func (t *connectionTracer) NewFrameToRingbuffer() {
+	t.mutex.Lock()
+	t.recordEvent(time.Now(), &eventNewFrameToRingbuffer{0, false})
 	t.mutex.Unlock()
 }

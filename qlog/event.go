@@ -566,3 +566,16 @@ func (e eventALPNInformation) IsNil() bool        { return false }
 func (e eventALPNInformation) MarshalJSONObject(enc *gojay.Encoder) {
 	enc.StringKey("chosen_alpn", e.chosenALPN)
 }
+
+type eventNewFrameToRingbuffer struct {
+	streamType int
+	put_back   bool
+}
+
+func (e eventNewFrameToRingbuffer) Category() category { return categoryTransport } //TODO
+func (e eventNewFrameToRingbuffer) Name() string       { return "new_frame_to_ringbuffer" }
+func (e eventNewFrameToRingbuffer) IsNil() bool        { return false }
+
+func (e eventNewFrameToRingbuffer) MarshalJSONObject(enc *gojay.Encoder) {
+	enc.IntKey("streamType", e.streamType)
+}

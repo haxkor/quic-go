@@ -1,11 +1,16 @@
 package ringbuffer
 
+import (
+	"github.com/quic-go/quic-go/logging"
+)
+
 // A RingBuffer is a ring buffer.
 // It acts as a heap that doesn't cause any allocations.
 type RingBuffer[T any] struct {
 	ring             []T
 	headPos, tailPos int
 	full             bool
+	Tracer           *logging.ConnectionTracer
 }
 
 // Init preallocates a buffer with a certain size.
@@ -43,6 +48,9 @@ func (r *RingBuffer[T]) PushBack(t T) {
 	if r.tailPos == r.headPos {
 		r.full = true
 	}
+	if r.Tracer != nil && r.Tracer.NewFrameToRingbuffer != nil {
+		r.Tracer.NewFrameToRingbuffer()
+	}
 }
 
 // PopFront returns the next element.
@@ -52,6 +60,7 @@ func (r *RingBuffer[T]) PopFront() T {
 	if r.Empty() {
 		panic("github.com/quic-go/quic-go/internal/utils/ringbuffer: pop from an empty queue")
 	}
+
 	r.full = false
 	t := r.ring[r.headPos]
 	r.ring[r.headPos] = *new(T)
