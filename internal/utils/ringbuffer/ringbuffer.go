@@ -68,6 +68,9 @@ func (r *RingBuffer[T]) PopFront() T {
 	if r.headPos == len(r.ring) {
 		r.headPos = 0
 	}
+	if r.Tracer != nil && r.Tracer.NewFrameToRingbuffer != nil {
+		r.Tracer.FrameReadFromRingbuffer()
+	}
 	return t
 }
 

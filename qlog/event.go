@@ -579,3 +579,15 @@ func (e eventNewFrameToRingbuffer) IsNil() bool        { return false }
 func (e eventNewFrameToRingbuffer) MarshalJSONObject(enc *gojay.Encoder) {
 	enc.IntKey("streamType", e.streamType)
 }
+
+type eventFrameReadFromRingbuffer struct {
+	streamType int
+}
+
+func (e eventFrameReadFromRingbuffer) Category() category { return categoryTransport } //TODO
+func (e eventFrameReadFromRingbuffer) Name() string       { return "frame_read_from_ringbuffer" }
+func (e eventFrameReadFromRingbuffer) IsNil() bool        { return false }
+
+func (e eventFrameReadFromRingbuffer) MarshalJSONObject(enc *gojay.Encoder) {
+	enc.IntKey("streamType", e.streamType)
+}

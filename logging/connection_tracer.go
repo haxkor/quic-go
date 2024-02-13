@@ -39,7 +39,8 @@ type ConnectionTracer struct {
 	Close func()
 	Debug func(name, msg string)
 
-	NewFrameToRingbuffer func()
+	NewFrameToRingbuffer    func()
+	FrameReadFromRingbuffer func()
 }
 
 // NewMultiplexedConnectionTracer creates a new connection tracer that multiplexes events to multiple tracers.
