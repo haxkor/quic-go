@@ -124,17 +124,42 @@ func (f *framerI) AddActiveStream(id protocol.StreamID) {
 	f.mutex.Unlock()
 }
 
+func (f *framerI) getStreamQueueLen() int {
+	return f.bi_streamQueue.Len() + f.uni_streamQueue.Len()
+}
+
+func (f *framerI) StreamQueuePop() protocol.StreamID {
+	if !f.bi_streamQueue.Empty() {
+		return f.bi_streamQueue.PopFront()
+	} else if !f.uni_streamQueue.Empty() {
+		return f.uni_streamQueue.PopFront()
+	} else {
+		panic("StreamQueuePop called but both queues are empty!")
+	}
+}
+
+func (f *framerI) StreamQueuePushBack(id protocol.StreamID) {
+	if id.Type() == protocol.StreamTypeBidi {
+		f.bi_streamQueue.PushBack(id)
+	} else if id.Type() == protocol.StreamTypeUni {
+		f.uni_streamQueue.PushBack(id)
+	} else {
+		panic("StreamQueuePushBack received unknown StreamType")
+	}
+
+}
+
 func (f *framerI) AppendStreamFrames(frames []ackhandler.StreamFrame, maxLen protocol.ByteCount, v protocol.Version) ([]ackhandler.StreamFrame, protocol.ByteCount) {
 	startLen := len(frames)
 	var length protocol.ByteCount
 	f.mutex.Lock()
 	// pop STREAM frames, until less than MinStreamFrameSize bytes are left in the packet
-	numActiveStreams := f.streamQueue.Len()
+	numActiveStreams := f.getStreamQueueLen()
 	for i := 0; i < numActiveStreams; i++ {
 		if protocol.MinStreamFrameSize+length > maxLen {
 			break
 		}
-		id := f.streamQueue.PopFront()
+		id := f.StreamQueuePop()
 		// This should never return an error. Better check it anyway.
 		// The stream will only be in the streamQueue, if it enqueued itself there.
 		str, err := f.streamGetter.GetOrOpenSendStream(id)
@@ -150,7 +175,7 @@ func (f *framerI) AppendStreamFrames(frames []ackhandler.StreamFrame, maxLen pro
 		remainingLen += quicvarint.Len(uint64(remainingLen))
 		frame, ok, hasMoreData := str.popStreamFrame(remainingLen, v)
 		if hasMoreData { // put the stream back in the queue (at the end)
-			f.streamQueue.PushBack(id)
+			f.StreamQueuePushBack(id)
 		} else { // no more data to send. Stream is not active
 			delete(f.activeStreams, id)
 		}
@@ -178,7 +203,8 @@ func (f *framerI) Handle0RTTRejection() error {
 	defer f.mutex.Unlock()
 
 	f.controlFrameMutex.Lock()
-	f.streamQueue.Clear()
+	f.uni_streamQueue.Clear()
+	f.bi_streamQueue.Clear()
 	for id := range f.activeStreams {
 		delete(f.activeStreams, id)
 	}
