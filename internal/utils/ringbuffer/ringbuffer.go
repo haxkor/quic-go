@@ -11,6 +11,7 @@ type RingBuffer[T any] struct {
 	headPos, tailPos int
 	full             bool
 	Tracer           *logging.ConnectionTracer
+	Unidirectional   bool
 }
 
 // Init preallocates a buffer with a certain size.
