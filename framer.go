@@ -31,8 +31,9 @@ type framerI struct {
 
 	streamGetter streamGetter
 
-	activeStreams map[protocol.StreamID]struct{}
-	streamQueue   ringbuffer.RingBuffer[protocol.StreamID]
+	activeStreams   map[protocol.StreamID]struct{}
+	uni_streamQueue ringbuffer.RingBuffer[protocol.StreamID]
+	bi_streamQueue  ringbuffer.RingBuffer[protocol.StreamID]
 
 	controlFrameMutex sync.Mutex
 	controlFrames     []wire.Frame
@@ -43,19 +44,16 @@ var _ framer = &framerI{}
 
 func newFramer(streamGetter streamGetter, tracer *logging.ConnectionTracer) framer {
 	return &framerI{
-		streamGetter:  streamGetter,
-		activeStreams: make(map[protocol.StreamID]struct{}),
-		streamQueue:   ringbuffer.RingBuffer[protocol.StreamID]{Tracer: tracer},
+		streamGetter:    streamGetter,
+		activeStreams:   make(map[protocol.StreamID]struct{}),
+		uni_streamQueue: ringbuffer.RingBuffer[protocol.StreamID]{Tracer: tracer, Unidirectional: true},
+		bi_streamQueue:  ringbuffer.RingBuffer[protocol.StreamID]{Tracer: tracer, Unidirectional: false},
 	}
-}
-
-func (f *framerI) SetTracerOfFramerStreamQueue(tracer *logging.ConnectionTracer) {
-	f.streamQueue.Tracer = tracer
 }
 
 func (f *framerI) HasData() bool {
 	f.mutex.Lock()
-	hasData := !f.streamQueue.Empty()
+	hasData := !f.uni_streamQueue.Empty() || !f.bi_streamQueue.Empty()
 	f.mutex.Unlock()
 	if hasData {
 		return true
@@ -114,7 +112,13 @@ func (f *framerI) AppendControlFrames(frames []ackhandler.Frame, maxLen protocol
 func (f *framerI) AddActiveStream(id protocol.StreamID) {
 	f.mutex.Lock()
 	if _, ok := f.activeStreams[id]; !ok {
-		f.streamQueue.PushBack(id)
+		if id.Type() == protocol.StreamTypeUni {
+			f.uni_streamQueue.PushBack(id)
+		} else if id.Type() == protocol.StreamTypeBidi {
+			f.bi_streamQueue.PushBack(id)
+		} else {
+			panic("unknown streamtype")
+		}
 		f.activeStreams[id] = struct{}{}
 	}
 	f.mutex.Unlock()
