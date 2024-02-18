@@ -39,7 +39,7 @@ type ConnectionTracer struct {
 	Close func()
 	Debug func(name, msg string)
 
-	NewFrameToRingbuffer    func()
+	NewFrameToRingbuffer    func(unidirectional bool)
 	FrameReadFromRingbuffer func()
 }
 

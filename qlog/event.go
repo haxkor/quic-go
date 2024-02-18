@@ -568,8 +568,8 @@ func (e eventALPNInformation) MarshalJSONObject(enc *gojay.Encoder) {
 }
 
 type eventNewFrameToRingbuffer struct {
-	streamType int
-	put_back   bool
+	streamType     int
+	unidirectional bool
 }
 
 func (e eventNewFrameToRingbuffer) Category() category { return categoryTransport } //TODO
