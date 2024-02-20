@@ -10,6 +10,7 @@ import (
 	"github.com/quic-go/quic-go/internal/wire"
 	"github.com/quic-go/quic-go/logging"
 	"github.com/quic-go/quic-go/quicvarint"
+	"github.com/quic-go/quic-go/streamtypebalancer"
 )
 
 type framer interface {
@@ -27,7 +28,8 @@ type framer interface {
 const maxPathResponses = 256
 
 type framerI struct {
-	mutex sync.Mutex
+	balancer streamtypebalancer.Balancer
+	mutex    sync.Mutex
 
 	streamGetter streamGetter
 
