@@ -2,10 +2,12 @@ package streamtypebalancer
 
 import (
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/logging"
+	"github.com/quic-go/quic-go/qlog"
 )
 
 type Balancer struct {
@@ -13,19 +15,20 @@ type Balancer struct {
 	connectionTracer *logging.ConnectionTracer
 }
 
-func MyNewTracer() *logging.ConnectionTracer {
-	b := Balancer{last_bidi_frame: time.Now()}
+func MyNewTracer(w io.WriteCloser, p logging.Perspective, odcid protocol.ConnectionID) *logging.ConnectionTracer {
+	// b := Balancer{last_bidi_frame: time.Now()}
+	tracer := qlog.NewConnectionTracer_tracer(w, p, odcid)
 
-	tracer := logging.ConnectionTracer{
+	connection_tracer := logging.ConnectionTracer{
 		UpdatedMetrics: func(rttStats *logging.RTTStats, cwnd, bytesInFlight logging.ByteCount, packetsInFlight int) {
-			b.UpdateMetrics(rttStats, cwnd, bytesInFlight, packetsInFlight)
+			tracer.UpdatedMetrics(rttStats, cwnd, bytesInFlight, packetsInFlight)
 		},
 		UpdatedCongestionState: func(state logging.CongestionState) {
-			b.UpdatedCongestionState(state)
+			tracer.UpdatedCongestionState(state)
 		},
 	}
 
-	return &tracer
+	return &connection_tracer
 }
 
 type balancer struct {
