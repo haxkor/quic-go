@@ -10,6 +10,7 @@ import (
 	"github.com/quic-go/quic-go/internal/wire"
 	"github.com/quic-go/quic-go/logging"
 	"github.com/quic-go/quic-go/quicvarint"
+	"github.com/quic-go/quic-go/new_module"
 )
 
 type framer interface {
