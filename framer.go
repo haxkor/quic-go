@@ -44,7 +44,7 @@ type framerI struct {
 
 var _ framer = &framerI{}
 
-func newFramer(streamGetter streamGetter, tracer *logging.ConnectionTracer) framer {
+func newFramer(streamGetter streamGetter, tracer *logging.ConnectionTracer, balancer streamtypebalancer.Balancer) framer {
 	return &framerI{
 		streamGetter:    streamGetter,
 		activeStreams:   make(map[protocol.StreamID]struct{}),

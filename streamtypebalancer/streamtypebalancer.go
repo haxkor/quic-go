@@ -31,8 +31,11 @@ func MyNewTracer(w io.WriteCloser, p logging.Perspective, odcid protocol.Connect
 	return &connection_tracer
 }
 
-type balancer struct {
-	number int
+func NewBalancerAndTracer(w io.WriteCloser, p logging.Perspective, odcid protocol.ConnectionID) (*logging.ConnectionTracer, *Balancer) {
+	tracer := MyNewTracer(w, p, odcid)
+	balancer := &Balancer{last_bidi_frame: time.Now(), connectionTracer: tracer}
+
+	return tracer, balancer
 }
 
 func (b *Balancer) UpdateMetrics(rttStats *logging.RTTStats, cwnd, bytesInFlight protocol.ByteCount, packetsInFlight int) {

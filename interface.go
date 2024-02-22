@@ -11,6 +11,7 @@ import (
 	"github.com/quic-go/quic-go/internal/handshake"
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/logging"
+	"github.com/quic-go/quic-go/streamtypebalancer"
 )
 
 // The StreamID is the ID of a QUIC stream.
@@ -326,8 +327,9 @@ type Config struct {
 	// Only valid for the server.
 	Allow0RTT bool
 	// Enable QUIC datagram support (RFC 9221).
-	EnableDatagrams bool
-	Tracer          func(context.Context, logging.Perspective, ConnectionID) *logging.ConnectionTracer
+	EnableDatagrams     bool
+	Tracer              func(context.Context, logging.Perspective, ConnectionID) *logging.ConnectionTracer
+	Tracer_and_Balancer func(context.Context, logging.Perspective, ConnectionID) (*logging.ConnectionTracer, *streamtypebalancer.Balancer)
 }
 
 type ClientHelloInfo struct {
