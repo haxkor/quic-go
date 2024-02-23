@@ -113,5 +113,6 @@ func populateConfig(config *Config) *Config {
 		DisablePathMTUDiscovery:        config.DisablePathMTUDiscovery,
 		Allow0RTT:                      config.Allow0RTT,
 		Tracer:                         config.Tracer,
+		Tracer_and_Balancer:            config.Tracer_and_Balancer,
 	}
 }

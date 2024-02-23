@@ -213,7 +213,7 @@ type connection struct {
 	tracer *logging.ConnectionTracer
 	logger utils.Logger
 
-	Balancer streamtypebalancer.Balancer
+	Balancer *streamtypebalancer.Balancer
 }
 
 var (
@@ -237,6 +237,7 @@ var newConnection = func(
 	tokenGenerator *handshake.TokenGenerator,
 	clientAddressValidated bool,
 	tracer *logging.ConnectionTracer,
+	balancer *streamtypebalancer.Balancer,
 	tracingID uint64,
 	logger utils.Logger,
 	v protocol.Version,
@@ -250,6 +251,7 @@ var newConnection = func(
 		oneRTTStream:        newCryptoStream(),
 		perspective:         protocol.PerspectiveServer,
 		tracer:              tracer,
+		Balancer:            balancer,
 		logger:              logger,
 		version:             v,
 	}

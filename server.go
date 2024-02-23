@@ -97,6 +97,7 @@ type baseServer struct {
 		*handshake.TokenGenerator,
 		bool, /* client address validated by an address validation token */
 		*logging.ConnectionTracer,
+		*streamtypebalancer.Balancer,
 		uint64,
 		utils.Logger,
 		protocol.Version,
@@ -122,6 +123,8 @@ type baseServer struct {
 	tracer *logging.Tracer
 
 	logger utils.Logger
+
+	balancer streamtypebalancer.Balancer
 }
 
 // A Listener listens for incoming QUIC connections.
@@ -656,11 +659,8 @@ func (s *baseServer) handleInitialImpl(p receivedPacket, hdr *wire.Header) error
 				connID = origDestConnID
 			}
 			tracer, balancer = config.Tracer_and_Balancer(context.WithValue(context.Background(), ConnectionTracingKey, tracingID), protocol.PerspectiveServer, connID)
-			if balancer != nil {
-			}
 
-		}
-		if config.Tracer != nil {
+		} else if config.Tracer != nil {
 			// Use the same connection ID that is passed to the client's GetLogWriter callback.
 			connID := hdr.DestConnectionID
 			if origDestConnID.Len() > 0 {
@@ -683,6 +683,7 @@ func (s *baseServer) handleInitialImpl(p receivedPacket, hdr *wire.Header) error
 			s.tokenGenerator,
 			clientAddrValidated,
 			tracer,
+			balancer,
 			tracingID,
 			s.logger,
 			hdr.Version,

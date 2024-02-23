@@ -28,8 +28,7 @@ type framer interface {
 const maxPathResponses = 256
 
 type framerI struct {
-	balancer streamtypebalancer.Balancer
-	mutex    sync.Mutex
+	mutex sync.Mutex
 
 	streamGetter streamGetter
 
@@ -40,16 +39,19 @@ type framerI struct {
 	controlFrameMutex sync.Mutex
 	controlFrames     []wire.Frame
 	pathResponses     []*wire.PathResponseFrame
+
+	balancer *streamtypebalancer.Balancer
 }
 
 var _ framer = &framerI{}
 
-func newFramer(streamGetter streamGetter, tracer *logging.ConnectionTracer, balancer streamtypebalancer.Balancer) framer {
+func newFramer(streamGetter streamGetter, tracer *logging.ConnectionTracer, balancer *streamtypebalancer.Balancer) framer {
 	return &framerI{
 		streamGetter:    streamGetter,
 		activeStreams:   make(map[protocol.StreamID]struct{}),
 		uni_streamQueue: ringbuffer.RingBuffer[protocol.StreamID]{Tracer: tracer, Unidirectional: true},
 		bi_streamQueue:  ringbuffer.RingBuffer[protocol.StreamID]{Tracer: tracer, Unidirectional: false},
+		balancer:        balancer,
 	}
 }
 
