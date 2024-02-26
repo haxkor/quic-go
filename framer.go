@@ -165,6 +165,21 @@ func (f *framerI) AppendStreamFrames(frames []ackhandler.StreamFrame, maxLen pro
 			break
 		}
 		id := f.StreamQueuePop()
+
+		if id.Type() == protocol.StreamTypeUni && f.balancer != nil {
+			if !f.balancer.CanSendUniFrame() {
+				f.StreamQueuePushBack(id)
+				continue
+			} else {
+				// we can send a unidirectional frame, but we dont want to clog the entire congestionWindow
+				msg := fmt.Sprintf("maxLen=%d", maxLen)
+				f.balancer.Debug("framer:AppendStreamFrames", msg)
+			}
+		}
+		if id.Type() == protocol.StreamTypeBidi && f.balancer != nil {
+			f.balancer.UpdateLastBidiFrame()
+		}
+
 		// This should never return an error. Better check it anyway.
 		// The stream will only be in the streamQueue, if it enqueued itself there.
 		str, err := f.streamGetter.GetOrOpenSendStream(id)
@@ -199,6 +214,9 @@ func (f *framerI) AppendStreamFrames(frames []ackhandler.StreamFrame, maxLen pro
 		// account for the smaller size of the last STREAM frame
 		frames[len(frames)-1].Frame.DataLenPresent = false
 		length += frames[len(frames)-1].Frame.Length(v) - l
+	}
+	if f.balancer != nil {
+		f.balancer.Debug("framer:AppendStreamFrames", fmt.Sprintf("length: %d", length))
 	}
 	return frames, length
 }
