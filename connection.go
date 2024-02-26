@@ -22,6 +22,7 @@ import (
 	"github.com/quic-go/quic-go/internal/utils"
 	"github.com/quic-go/quic-go/internal/wire"
 	"github.com/quic-go/quic-go/logging"
+	"github.com/quic-go/quic-go/streamtypebalancer"
 )
 
 type unpacker interface {
@@ -211,6 +212,8 @@ type connection struct {
 	logID  string
 	tracer *logging.ConnectionTracer
 	logger utils.Logger
+
+	Balancer *streamtypebalancer.Balancer
 }
 
 var (
@@ -234,6 +237,7 @@ var newConnection = func(
 	tokenGenerator *handshake.TokenGenerator,
 	clientAddressValidated bool,
 	tracer *logging.ConnectionTracer,
+	balancer *streamtypebalancer.Balancer,
 	tracingID uint64,
 	logger utils.Logger,
 	v protocol.Version,
@@ -247,6 +251,7 @@ var newConnection = func(
 		oneRTTStream:        newCryptoStream(),
 		perspective:         protocol.PerspectiveServer,
 		tracer:              tracer,
+		Balancer:            balancer,
 		logger:              logger,
 		version:             v,
 	}
@@ -477,7 +482,7 @@ func (s *connection) preSetup() {
 		uint64(s.config.MaxIncomingUniStreams),
 		s.perspective,
 	)
-	s.framer = newFramer(s.streamsMap, s.tracer)
+	s.framer = newFramer(s.streamsMap, s.tracer, s.Balancer)
 	s.receivedPackets = make(chan receivedPacket, protocol.MaxConnUnprocessedPackets)
 	s.closeChan = make(chan closeError, 1)
 	s.sendingScheduled = make(chan struct{}, 1)

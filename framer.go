@@ -2,6 +2,7 @@ package quic
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/quic-go/quic-go/internal/ackhandler"
@@ -10,6 +11,7 @@ import (
 	"github.com/quic-go/quic-go/internal/wire"
 	"github.com/quic-go/quic-go/logging"
 	"github.com/quic-go/quic-go/quicvarint"
+	"github.com/quic-go/quic-go/streamtypebalancer"
 )
 
 type framer interface {
@@ -38,16 +40,19 @@ type framerI struct {
 	controlFrameMutex sync.Mutex
 	controlFrames     []wire.Frame
 	pathResponses     []*wire.PathResponseFrame
+
+	balancer *streamtypebalancer.Balancer
 }
 
 var _ framer = &framerI{}
 
-func newFramer(streamGetter streamGetter, tracer *logging.ConnectionTracer) framer {
+func newFramer(streamGetter streamGetter, tracer *logging.ConnectionTracer, balancer *streamtypebalancer.Balancer) framer {
 	return &framerI{
 		streamGetter:    streamGetter,
 		activeStreams:   make(map[protocol.StreamID]struct{}),
 		uni_streamQueue: ringbuffer.RingBuffer[protocol.StreamID]{Tracer: tracer, Unidirectional: true},
 		bi_streamQueue:  ringbuffer.RingBuffer[protocol.StreamID]{Tracer: tracer, Unidirectional: false},
+		balancer:        balancer,
 	}
 }
 

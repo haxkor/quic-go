@@ -16,6 +16,7 @@ import (
 	"github.com/quic-go/quic-go/internal/utils"
 	"github.com/quic-go/quic-go/internal/wire"
 	"github.com/quic-go/quic-go/logging"
+	"github.com/quic-go/quic-go/streamtypebalancer"
 )
 
 // ErrServerClosed is returned by the Listener or EarlyListener's Accept method after a call to Close.
@@ -96,6 +97,7 @@ type baseServer struct {
 		*handshake.TokenGenerator,
 		bool, /* client address validated by an address validation token */
 		*logging.ConnectionTracer,
+		*streamtypebalancer.Balancer,
 		uint64,
 		utils.Logger,
 		protocol.Version,
@@ -121,6 +123,8 @@ type baseServer struct {
 	tracer *logging.Tracer
 
 	logger utils.Logger
+
+	balancer streamtypebalancer.Balancer
 }
 
 // A Listener listens for incoming QUIC connections.
@@ -647,7 +651,16 @@ func (s *baseServer) handleInitialImpl(p receivedPacket, hdr *wire.Header) error
 			config = populateConfig(conf)
 		}
 		var tracer *logging.ConnectionTracer
-		if config.Tracer != nil {
+		var balancer *streamtypebalancer.Balancer
+		if config.Tracer_and_Balancer != nil {
+			// Use the same connection ID that is passed to the client's GetLogWriter callback.
+			connID := hdr.DestConnectionID
+			if origDestConnID.Len() > 0 {
+				connID = origDestConnID
+			}
+			tracer, balancer = config.Tracer_and_Balancer(context.WithValue(context.Background(), ConnectionTracingKey, tracingID), protocol.PerspectiveServer, connID)
+
+		} else if config.Tracer != nil {
 			// Use the same connection ID that is passed to the client's GetLogWriter callback.
 			connID := hdr.DestConnectionID
 			if origDestConnID.Len() > 0 {
@@ -670,6 +683,7 @@ func (s *baseServer) handleInitialImpl(p receivedPacket, hdr *wire.Header) error
 			s.tokenGenerator,
 			clientAddrValidated,
 			tracer,
+			balancer,
 			tracingID,
 			s.logger,
 			hdr.Version,
