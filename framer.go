@@ -146,6 +146,9 @@ func (f *framerI) StreamQueuePop() protocol.StreamID {
 func (f *framerI) StreamQueuePushBack(id protocol.StreamID) {
 	if id.Type() == protocol.StreamTypeBidi {
 		f.bi_streamQueue.PushBack(id)
+		if f.balancer != nil {
+			f.balancer.Debug("StreamQueuePushBack", "pusing back bidi frame")
+		}
 	} else if id.Type() == protocol.StreamTypeUni {
 		f.uni_streamQueue.PushBack(id)
 	} else {
@@ -161,13 +164,15 @@ func (f *framerI) AppendStreamFrames(frames []ackhandler.StreamFrame, maxLen pro
 	// pop STREAM frames, until less than MinStreamFrameSize bytes are left in the packet
 	numActiveStreams := f.getStreamQueueLen()
 	for i := 0; i < numActiveStreams; i++ {
+		remainingLen := maxLen - length
+
 		if protocol.MinStreamFrameSize+length > maxLen {
 			break
 		}
 		id := f.StreamQueuePop()
 
 		if id.Type() == protocol.StreamTypeUni && f.balancer != nil {
-			if !f.balancer.CanSendUniFrame() {
+			if !f.balancer.CanSendUniFrame(remainingLen) {
 				f.StreamQueuePushBack(id)
 				continue
 			} else {
@@ -188,13 +193,15 @@ func (f *framerI) AppendStreamFrames(frames []ackhandler.StreamFrame, maxLen pro
 			delete(f.activeStreams, id)
 			continue
 		}
-		remainingLen := maxLen - length
 		// For the last STREAM frame, we'll remove the DataLen field later.
 		// Therefore, we can pretend to have more bytes available when popping
 		// the STREAM frame (which will always have the DataLen set).
 		remainingLen += quicvarint.Len(uint64(remainingLen))
 		frame, ok, hasMoreData := str.popStreamFrame(remainingLen, v)
 		if hasMoreData { // put the stream back in the queue (at the end)
+			if f.balancer != nil {
+				f.balancer.Debug("framer", "has more data")
+			}
 			f.StreamQueuePushBack(id)
 		} else { // no more data to send. Stream is not active
 			delete(f.activeStreams, id)
