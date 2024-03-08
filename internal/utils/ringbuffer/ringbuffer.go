@@ -107,3 +107,13 @@ func (r *RingBuffer[T]) Clear() {
 	}
 	r.headPos, r.tailPos, r.full = 0, 0, false
 }
+
+func (r *RingBuffer[T]) Iter() []T {
+	if r.Empty() {
+		return make([]T, 0)
+	} else if r.tailPos >= r.headPos {
+		return r.ring[r.headPos:r.tailPos]
+	} else {
+		return append(r.ring[r.headPos:], r.ring[:r.tailPos]...)
+	}
+}
