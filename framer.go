@@ -175,10 +175,6 @@ func (f *framerI) AppendStreamFrames(frames []ackhandler.StreamFrame, maxLen pro
 			if !f.balancer.CanSendUniFrame(remainingLen) {
 				f.StreamQueuePushBack(id)
 				continue
-			} else {
-				// we can send a unidirectional frame, but we dont want to clog the entire congestionWindow
-				msg := fmt.Sprintf("maxLen=%d", maxLen)
-				f.balancer.Debug("framer:AppendStreamFrames", msg)
 			}
 		}
 		if id.Type() == protocol.StreamTypeBidi && f.balancer != nil {
@@ -213,7 +209,12 @@ func (f *framerI) AppendStreamFrames(frames []ackhandler.StreamFrame, maxLen pro
 			continue
 		}
 		frames = append(frames, frame)
-		length += frame.Frame.Length(v)
+		lengthNewFrame := frame.Frame.Length(v)
+		length += lengthNewFrame
+
+		if f.balancer != nil {
+			f.balancer.RegisterSentBytes(lengthNewFrame, id.Type())
+		}
 	}
 	f.mutex.Unlock()
 	if len(frames) > startLen {

@@ -186,7 +186,7 @@ func (b *Balancer) UpdateLastBidiFrame() {
 func (b *Balancer) CanSendUniFrame(size protocol.ByteCount) bool {
 	// b.reportOnStatus()
 
-	TIMEFRAME := time.Millisecond * 25
+	TIMEFRAME := time.Millisecond * 50
 	if b.sumOfSentBytes(TIMEFRAME) > 3000 {
 
 		// if b.bytesInFlight > b.cwnd/2 {
@@ -194,7 +194,6 @@ func (b *Balancer) CanSendUniFrame(size protocol.ByteCount) bool {
 		b.Debug("CanSendUniFrame:", "cant send uniframe")
 		return false
 	} else {
-		b.unibytesSentList.PushBack(SentTuple{time.Now(), size})
 		b.Debug("CanSendUniFrame:", "can send uniframe")
 		return true
 	}
@@ -227,4 +226,12 @@ func (b *Balancer) sumOfSentBytes(within_timeframe time.Duration) protocol.ByteC
 	}
 	b.Debug("sendUniFrameSize", fmt.Sprintf("sum = %d", bytes_sum))
 	return bytes_sum
+}
+
+func (b *Balancer) RegisterSentBytes(size protocol.ByteCount, streamtype protocol.StreamType) {
+	if streamtype == protocol.StreamTypeBidi {
+		return
+	} else if streamtype == protocol.StreamTypeUni {
+		b.unibytesSentList.PushBack(SentTuple{time.Now(), size})
+	}
 }
