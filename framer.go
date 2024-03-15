@@ -161,19 +161,17 @@ func (f *framerI) AppendStreamFrames(frames []ackhandler.StreamFrame, maxLen pro
 	// pop STREAM frames, until less than MinStreamFrameSize bytes are left in the packet
 	numActiveStreams := f.getStreamQueueLen()
 	for i := 0; i < numActiveStreams; i++ {
+		remainingLen := maxLen - length
+
 		if protocol.MinStreamFrameSize+length > maxLen {
 			break
 		}
 		id := f.StreamQueuePop()
 
 		if id.Type() == protocol.StreamTypeUni && f.balancer != nil {
-			if !f.balancer.CanSendUniFrame() {
+			if !f.balancer.CanSendUniFrame(remainingLen) {
 				f.StreamQueuePushBack(id)
 				continue
-			} else {
-				// we can send a unidirectional frame, but we dont want to clog the entire congestionWindow
-				msg := fmt.Sprintf("maxLen=%d", maxLen)
-				f.balancer.Debug("framer:AppendStreamFrames", msg)
 			}
 		}
 		if id.Type() == protocol.StreamTypeBidi && f.balancer != nil {
@@ -188,7 +186,6 @@ func (f *framerI) AppendStreamFrames(frames []ackhandler.StreamFrame, maxLen pro
 			delete(f.activeStreams, id)
 			continue
 		}
-		remainingLen := maxLen - length
 		// For the last STREAM frame, we'll remove the DataLen field later.
 		// Therefore, we can pretend to have more bytes available when popping
 		// the STREAM frame (which will always have the DataLen set).
@@ -206,7 +203,12 @@ func (f *framerI) AppendStreamFrames(frames []ackhandler.StreamFrame, maxLen pro
 			continue
 		}
 		frames = append(frames, frame)
-		length += frame.Frame.Length(v)
+		lengthNewFrame := frame.Frame.Length(v)
+		length += lengthNewFrame
+
+		if f.balancer != nil {
+			f.balancer.RegisterSentBytes(lengthNewFrame, id.Type())
+		}
 	}
 	f.mutex.Unlock()
 	if len(frames) > startLen {

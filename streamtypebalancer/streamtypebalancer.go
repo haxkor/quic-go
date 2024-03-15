@@ -13,16 +13,24 @@ import (
 
 	"github.com/quic-go/quic-go/internal/protocol"
 	"github.com/quic-go/quic-go/internal/utils"
+	"github.com/quic-go/quic-go/internal/utils/ringbuffer"
 	"github.com/quic-go/quic-go/internal/wire"
 	"github.com/quic-go/quic-go/logging"
 	"github.com/quic-go/quic-go/qlog"
 )
+
+type SentTuple struct {
+	timestamp  time.Time
+	bytes_sent protocol.ByteCount
+}
 
 type Balancer struct {
 	last_bidi_frame  time.Time
 	connectionTracer *logging.ConnectionTracer
 	cwnd             protocol.ByteCount
 	bytesInFlight    protocol.ByteCount
+
+	unibytesSentList ringbuffer.RingBuffer[SentTuple]
 }
 
 func FunctionForBalancerAndTracer(_ context.Context, p protocol.Perspective, connID protocol.ConnectionID) (*logging.ConnectionTracer, *Balancer) {
@@ -175,10 +183,16 @@ func (b *Balancer) UpdateLastBidiFrame() {
 	b.Debug("UpdateLastBidiFrame", fmt.Sprintf("NewBidiFrame, difference: %s", diff))
 }
 
-func (b *Balancer) CanSendUniFrame() bool {
-	b.reportOnStatus()
-	if (b.cwnd)/20 < b.bytesInFlight ||
-		time.Since(b.last_bidi_frame).Abs() < 1_000_000*20 {
+func (b *Balancer) CanSendUniFrame(size protocol.ByteCount) bool {
+	// b.reportOnStatus()
+
+	TIMEFRAME := time.Second * 1 / 10 //time.Millisecond * 50
+	var BYTES_ALLOWED protocol.ByteCount = 1_500_000 / 8 / 10
+	if b.sumOfSentBytes(TIMEFRAME) > BYTES_ALLOWED &&
+		(b.bytesInFlight < protocol.ByteCount(float64(b.cwnd)*0.7)) {
+
+		// if b.bytesInFlight > b.cwnd/2 {
+		// if time.Since(b.last_bidi_frame).Abs() < 1_000_000*10 {
 		b.Debug("CanSendUniFrame:", "cant send uniframe")
 		return false
 	} else {
@@ -192,4 +206,34 @@ func (b *Balancer) reportOnStatus() {
 	msg := fmt.Sprintf("time since last bidiframe: %s\ncwnd: %d  bytesInFlight: %d",
 		difference.String(), b.cwnd, b.bytesInFlight)
 	b.connectionTracer.Debug("balancer status report:", msg)
+}
+
+func (b *Balancer) sumOfSentBytes(within_timeframe time.Duration) protocol.ByteCount {
+	now := time.Now()
+
+	// remove old sizes
+	for !b.unibytesSentList.Empty() {
+		timepassed := now.Sub(b.unibytesSentList.PeekFront().timestamp)
+		b.Debug("sendUniFrameSize", fmt.Sprintf("time since sending: %s", timepassed.String()))
+		if timepassed > within_timeframe {
+			b.unibytesSentList.PopFront()
+		} else {
+			break
+		}
+	}
+
+	var bytes_sum protocol.ByteCount = 0
+	for _, next_elem := range b.unibytesSentList.Iter() {
+		bytes_sum += next_elem.bytes_sent
+	}
+	b.Debug("sendUniFrameSize", fmt.Sprintf("sum = %d", bytes_sum))
+	return bytes_sum
+}
+
+func (b *Balancer) RegisterSentBytes(size protocol.ByteCount, streamtype protocol.StreamType) {
+	if streamtype == protocol.StreamTypeBidi {
+		return
+	} else if streamtype == protocol.StreamTypeUni {
+		b.unibytesSentList.PushBack(SentTuple{time.Now(), size})
+	}
 }
