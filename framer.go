@@ -146,6 +146,9 @@ func (f *framerI) StreamQueuePop() protocol.StreamID {
 func (f *framerI) StreamQueuePushBack(id protocol.StreamID) {
 	if id.Type() == protocol.StreamTypeBidi {
 		f.bi_streamQueue.PushBack(id)
+		if f.balancer != nil {
+			f.balancer.Debug("StreamQueuePushBack", "pusing back bidi frame")
+		}
 	} else if id.Type() == protocol.StreamTypeUni {
 		f.uni_streamQueue.PushBack(id)
 	} else {
@@ -192,6 +195,9 @@ func (f *framerI) AppendStreamFrames(frames []ackhandler.StreamFrame, maxLen pro
 		remainingLen += quicvarint.Len(uint64(remainingLen))
 		frame, ok, hasMoreData := str.popStreamFrame(remainingLen, v)
 		if hasMoreData { // put the stream back in the queue (at the end)
+			if f.balancer != nil {
+				f.balancer.Debug("framer", "has more data")
+			}
 			f.StreamQueuePushBack(id)
 		} else { // no more data to send. Stream is not active
 			delete(f.activeStreams, id)
