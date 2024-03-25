@@ -174,11 +174,8 @@ func (f *framerI) AppendStreamFrames(frames []ackhandler.StreamFrame, maxLen pro
 		if id.Type() == protocol.StreamTypeUni && f.balancer != nil {
 			if !f.balancer.CanSendUniFrame(remainingLen) {
 				f.StreamQueuePushBack(id)
-				continue
+				break
 			}
-		}
-		if id.Type() == protocol.StreamTypeBidi && f.balancer != nil {
-			f.balancer.UpdateLastBidiFrame()
 		}
 
 		// This should never return an error. Better check it anyway.
