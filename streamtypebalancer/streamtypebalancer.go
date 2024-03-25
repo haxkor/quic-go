@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/quic-go/quic-go/internal/protocol"
@@ -31,6 +32,15 @@ type Balancer struct {
 	bytesInFlight    protocol.ByteCount
 
 	unibytesSentList ringbuffer.RingBuffer[SentTuple]
+
+	uni_cc_data struct {
+		mutex         sync.Mutex
+		timeframe     time.Duration
+		allowed_bytes protocol.ByteCount
+	}
+
+	bidirateMonitor *RateMonitor
+	unirateMonitor  *RateMonitor
 }
 
 func FunctionForBalancerAndTracer(_ context.Context, p protocol.Perspective, connID protocol.ConnectionID) (*logging.ConnectionTracer, *Balancer) {
@@ -63,9 +73,17 @@ func FunctionForBalancerAndTracer(_ context.Context, p protocol.Perspective, con
 }
 
 func NewBalancerAndTracer(w io.WriteCloser, p logging.Perspective, odcid protocol.ConnectionID) (*logging.ConnectionTracer, *Balancer) {
-	t := qlog.NewConnectionTracer_tracer(w, p, odcid)
 	balancer := &Balancer{last_bidi_frame: time.Now()}
+	balancer.uni_cc_data.timeframe = time.Second * 1
+	balancer.uni_cc_data.allowed_bytes = 1_500_000 / 8
 
+	balancer.bidirateMonitor = NewRateMonitor([]time.Duration{time.Second * 15, time.Second * 1})
+	balancer.bidirateMonitor.debug_func = balancer.Debug
+
+	balancer.unirateMonitor = NewRateMonitor([]time.Duration{time.Second})
+	balancer.unirateMonitor.debug_func = balancer.Debug
+
+	t := qlog.NewConnectionTracer_tracer(w, p, odcid)
 	connection_tracer := logging.ConnectionTracer{
 		StartedConnection: func(local, remote net.Addr, srcConnID, destConnID logging.ConnectionID) {
 			t.StartedConnection(local, remote, srcConnID, destConnID)
@@ -154,10 +172,47 @@ func NewBalancerAndTracer(w io.WriteCloser, p logging.Perspective, odcid protoco
 			t.NewFrameToRingbuffer(unidirectional)
 		},
 	}
-
 	balancer.connectionTracer = &connection_tracer
 
+	go balancer.LogMonitorResultsLoop()
+
 	return &connection_tracer, balancer
+}
+
+func (b *Balancer) LogMonitorResultsLoop() {
+	for {
+		time.Sleep(time.Millisecond * 500)
+		b.LogMonitorResults()
+	}
+}
+
+func (b *Balancer) LogMonitorResults() {
+	b.bidirateMonitor.RegressAll()
+	b.Debug("LogMonitorResults:", b.bidirateMonitor.Summary())
+
+	b.UpdateUnirate()
+}
+
+func (b *Balancer) UpdateUnirate() {
+	rateStatus := b.bidirateMonitor.getRateStatus()
+	switch rateStatus {
+	case STEADY:
+		b.Debug("UpdateUnirate", "STEADY")
+		b.uni_cc_data.allowed_bytes = protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes) * 1.06)
+	case DECREASING:
+		b.Debug("UpdateUnirate", "DECREASING")
+		b.uni_cc_data.allowed_bytes = protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes) * 0.90)
+	case INCREASING:
+		b.Debug("UpdateUnirate", "INCREASING")
+		// all good
+	}
+
+	bitrate_ratio := float64(b.bidirateMonitor.GetBitrateWithinMediantimeframe()) / float64(b.bidirateMonitor.GetMaxMedian())
+	if bitrate_ratio < 0.7 {
+		b.uni_cc_data.allowed_bytes = protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes) * 0.80)
+		b.Debug("UpdateUnirate", "current bitrate smaller than median of max bitrates, decreasing")
+	}
+
 }
 
 func (b *Balancer) UpdateMetrics(rttStats *logging.RTTStats, cwnd, bytesInFlight protocol.ByteCount, packetsInFlight int) {
@@ -177,22 +232,8 @@ func (b *Balancer) Debug(name, msg string) {
 	b.connectionTracer.Debug(name, msg)
 }
 
-func (b *Balancer) UpdateLastBidiFrame() {
-	diff := time.Since(b.last_bidi_frame)
-	b.last_bidi_frame = time.Now()
-	b.Debug("UpdateLastBidiFrame", fmt.Sprintf("NewBidiFrame, difference: %s", diff))
-}
-
 func (b *Balancer) CanSendUniFrame(size protocol.ByteCount) bool {
-	// b.reportOnStatus()
-
-	TIMEFRAME := time.Second * 1 / 10 //time.Millisecond * 50
-	var BYTES_ALLOWED protocol.ByteCount = 1_500_000 / 8 / 10
-	if b.sumOfSentBytes(TIMEFRAME) > BYTES_ALLOWED &&
-		(b.bytesInFlight < protocol.ByteCount(float64(b.cwnd)*0.7)) {
-
-		// if b.bytesInFlight > b.cwnd/2 {
-		// if time.Since(b.last_bidi_frame).Abs() < 1_000_000*10 {
+	if b.unirateMonitor.getBitrateWithin(b.uni_cc_data.timeframe) > b.uni_cc_data.allowed_bytes {
 		b.Debug("CanSendUniFrame:", "cant send uniframe")
 		return false
 	} else {
@@ -208,32 +249,14 @@ func (b *Balancer) reportOnStatus() {
 	b.connectionTracer.Debug("balancer status report:", msg)
 }
 
-func (b *Balancer) sumOfSentBytes(within_timeframe time.Duration) protocol.ByteCount {
-	now := time.Now()
-
-	// remove old sizes
-	for !b.unibytesSentList.Empty() {
-		timepassed := now.Sub(b.unibytesSentList.PeekFront().timestamp)
-		b.Debug("sendUniFrameSize", fmt.Sprintf("time since sending: %s", timepassed.String()))
-		if timepassed > within_timeframe {
-			b.unibytesSentList.PopFront()
-		} else {
-			break
-		}
-	}
-
-	var bytes_sum protocol.ByteCount = 0
-	for _, next_elem := range b.unibytesSentList.Iter() {
-		bytes_sum += next_elem.bytes_sent
-	}
-	b.Debug("sendUniFrameSize", fmt.Sprintf("sum = %d", bytes_sum))
-	return bytes_sum
-}
-
 func (b *Balancer) RegisterSentBytes(size protocol.ByteCount, streamtype protocol.StreamType) {
 	if streamtype == protocol.StreamTypeBidi {
-		return
+		// b.monitorBidiRate()
+
+		b.bidirateMonitor.AddSentData(size)
+
 	} else if streamtype == protocol.StreamTypeUni {
 		b.unibytesSentList.PushBack(SentTuple{time.Now(), size})
+		b.unirateMonitor.AddSentData(size)
 	}
 }
