@@ -92,7 +92,8 @@ func (r *RateMonitor) getBitrateWithin(tf time.Duration) protocol.ByteCount {
 			return latest.sent - senttuple.sent
 		}
 	}
-	panic("getBitrateWithin: unreachable")
+	return 0
+	// panic("getBitrateWithin: unreachable")
 }
 
 func (r *RateMonitor) recordBitrates() {
