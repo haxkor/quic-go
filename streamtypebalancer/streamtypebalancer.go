@@ -41,6 +41,8 @@ type Balancer struct {
 
 	bidirateMonitor *RateMonitor
 	unirateMonitor  *RateMonitor
+
+	rttMonitor *RTTMonitor
 }
 
 func FunctionForBalancerAndTracer(_ context.Context, p protocol.Perspective, connID protocol.ConnectionID) (*logging.ConnectionTracer, *Balancer) {
@@ -82,6 +84,9 @@ func NewBalancerAndTracer(w io.WriteCloser, p logging.Perspective, odcid protoco
 
 	balancer.unirateMonitor = NewRateMonitor([]time.Duration{time.Second})
 	balancer.unirateMonitor.debug_func = balancer.Debug
+
+	balancer.rttMonitor = NewRTTMonitor([]time.Duration{time.Second * 5, time.Millisecond * 500})
+	balancer.rttMonitor.debug_func = balancer.Debug
 
 	t := qlog.NewConnectionTracer_tracer(w, p, odcid)
 	connection_tracer := logging.ConnectionTracer{
@@ -213,9 +218,12 @@ func (b *Balancer) UpdateUnirate() {
 		b.Debug("UpdateUnirate", "current bitrate smaller than median of max bitrates, decreasing")
 	}
 
+	// b.rttMonitor.RegressAll()
+	// b.rttMonitor.getRateStatus()
 }
 
 func (b *Balancer) UpdateMetrics(rttStats *logging.RTTStats, cwnd, bytesInFlight protocol.ByteCount, packetsInFlight int) {
+	b.rttMonitor.AddSample(rttStats.LatestRTT())
 	if cwnd != b.cwnd {
 		msg := fmt.Sprintf("cwnd changed from %d to %d\tbytesInFlight:%d", b.cwnd, cwnd, bytesInFlight)
 		b.connectionTracer.Debug("UpdateMetrics", msg)
