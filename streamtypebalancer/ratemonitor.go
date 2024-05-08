@@ -194,9 +194,9 @@ func (r *RateMonitor) Summary() string {
 type rateStatus int
 
 const (
-	STEADY rateStatus = iota
-	INCREASING
-	DECREASING
+	RATE_STEADY rateStatus = iota
+	RATE_INCREASING
+	RATE_DECREASING
 )
 
 func (r *RateMonitor) getRateStatus() rateStatus {
@@ -206,10 +206,10 @@ func (r *RateMonitor) getRateStatus() rateStatus {
 	ratio := float64(longterm_slope) / float64(shortterm_slope)
 
 	if ratio > 1.10 { // longterm rate was growing faster
-		return DECREASING
+		return RATE_DECREASING
 	} else if ratio < 0.9 { // shortterm is growing more
-		return INCREASING
+		return RATE_INCREASING
 	} else {
-		return STEADY
+		return RATE_STEADY
 	}
 }
