@@ -41,6 +41,9 @@ type Balancer struct {
 
 	bidirateMonitor *RateMonitor
 	unirateMonitor  *RateMonitor
+
+	rttMonitor  *RTTMonitor
+	oldRTTStats utils.RTTStats
 }
 
 func FunctionForBalancerAndTracer(_ context.Context, p protocol.Perspective, connID protocol.ConnectionID) (*logging.ConnectionTracer, *Balancer) {
@@ -74,14 +77,17 @@ func FunctionForBalancerAndTracer(_ context.Context, p protocol.Perspective, con
 
 func NewBalancerAndTracer(w io.WriteCloser, p logging.Perspective, odcid protocol.ConnectionID) (*logging.ConnectionTracer, *Balancer) {
 	balancer := &Balancer{last_bidi_frame: time.Now()}
-	balancer.uni_cc_data.timeframe = time.Second * 1
-	balancer.uni_cc_data.allowed_bytes = 1_500_000 / 8
+	balancer.uni_cc_data.timeframe = time.Second * 1 / 4
+	balancer.uni_cc_data.allowed_bytes = 1_500_000 / 8 / 4
 
 	balancer.bidirateMonitor = NewRateMonitor([]time.Duration{time.Second * 15, time.Second * 1})
 	balancer.bidirateMonitor.debug_func = balancer.Debug
 
 	balancer.unirateMonitor = NewRateMonitor([]time.Duration{time.Second})
 	balancer.unirateMonitor.debug_func = balancer.Debug
+
+	balancer.rttMonitor = NewRTTMonitor([]time.Duration{time.Second * 3, time.Second * 1, time.Millisecond * 500})
+	balancer.rttMonitor.debug_func = balancer.Debug
 
 	t := qlog.NewConnectionTracer_tracer(w, p, odcid)
 	connection_tracer := logging.ConnectionTracer{
@@ -175,13 +181,14 @@ func NewBalancerAndTracer(w io.WriteCloser, p logging.Perspective, odcid protoco
 	balancer.connectionTracer = &connection_tracer
 
 	go balancer.LogMonitorResultsLoop()
+	// go balancer.callRTTMonitor()
 
 	return &connection_tracer, balancer
 }
 
 func (b *Balancer) LogMonitorResultsLoop() {
 	for {
-		time.Sleep(time.Millisecond * 500)
+		time.Sleep(time.Millisecond * 200)
 		b.LogMonitorResults()
 	}
 }
@@ -193,35 +200,73 @@ func (b *Balancer) LogMonitorResults() {
 	b.UpdateUnirate()
 }
 
+func (b *Balancer) callRTTMonitor() {
+	for {
+		time.Sleep(time.Millisecond * 100)
+
+		b.rttMonitor.RegressAll()
+		b.rttMonitor.getRateStatus()
+	}
+}
+
 func (b *Balancer) UpdateUnirate() {
+	uni_growth := 1.0
+	reason := ""
+
 	rateStatus := b.bidirateMonitor.getRateStatus()
 	switch rateStatus {
-	case STEADY:
+	case RATE_STEADY:
 		b.Debug("UpdateUnirate", "STEADY")
-		b.uni_cc_data.allowed_bytes = protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes) * 1.06)
-	case DECREASING:
+		uni_growth += .2
+		// b.uni_cc_data.allowed_bytes = protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes) * 1.06)
+	case RATE_DECREASING:
 		b.Debug("UpdateUnirate", "DECREASING")
-		b.uni_cc_data.allowed_bytes = protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes) * 0.90)
-	case INCREASING:
+		reason += "bidi rate decreasing, "
+		// b.uni_cc_data.allowed_bytes = protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes) * 0.90)
+		uni_growth -= 0.3
+	case RATE_INCREASING:
 		b.Debug("UpdateUnirate", "INCREASING")
 		// all good
 	}
 
 	bitrate_ratio := float64(b.bidirateMonitor.GetBitrateWithinMediantimeframe()) / float64(b.bidirateMonitor.GetMaxMedian())
 	if bitrate_ratio < 0.7 {
-		b.uni_cc_data.allowed_bytes = protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes) * 0.80)
+		// b.uni_cc_data.allowed_bytes = protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes) * 0.80)
+		uni_growth -= 0.1
 		b.Debug("UpdateUnirate", "current bitrate smaller than median of max bitrates, decreasing")
+		reason += "bidirate smaller than median, "
 	}
+
+	b.rttMonitor.RegressAll()
+	rttStatus := b.rttMonitor.getRateStatus()
+	switch rttStatus {
+	case RTT_INCREASING:
+		b.Debug("UpdateUnirate", "RTT_INCREASING")
+		reason += "RTT increasing, "
+		// b.uni_cc_data.allowed_bytes = protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes) * 0.90)
+		uni_growth *= 0.8
+	default:
+		break
+
+	}
+
+	if reason != "" {
+		b.Debug("UpdateUnirate", fmt.Sprintf("reason: %s", reason))
+	}
+
+	if b.unirateMonitor.getBitrateWithin(b.uni_cc_data.timeframe) <
+		protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes)*0.9) {
+		uni_growth = min(1, uni_growth)
+	}
+	b.uni_cc_data.allowed_bytes = protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes) * uni_growth)
 
 }
 
 func (b *Balancer) UpdateMetrics(rttStats *logging.RTTStats, cwnd, bytesInFlight protocol.ByteCount, packetsInFlight int) {
-	if cwnd != b.cwnd {
-		msg := fmt.Sprintf("cwnd changed from %d to %d\tbytesInFlight:%d", b.cwnd, cwnd, bytesInFlight)
-		b.connectionTracer.Debug("UpdateMetrics", msg)
+	if rttStats.LatestRTT() != b.oldRTTStats.LatestRTT() {
+		b.oldRTTStats = *rttStats // this is not very efficient but we save all information
+		b.rttMonitor.AddSample(rttStats.LatestRTT())
 	}
-	b.cwnd = cwnd
-	b.bytesInFlight = bytesInFlight
 }
 
 func (b *Balancer) UpdatedCongestionState(state logging.CongestionState) {
