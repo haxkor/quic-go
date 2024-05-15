@@ -30,6 +30,9 @@ type RTTMonitor struct {
 	RegressionResults []regressionResult
 
 	inputCounter int
+
+	slopescorer_short slopescorer
+	slopescorer_long  slopescorer
 }
 
 func NewRTTMonitor(timeframes []time.Duration) *RTTMonitor {
@@ -37,6 +40,8 @@ func NewRTTMonitor(timeframes []time.Duration) *RTTMonitor {
 	r.samples.Init(32)
 	r.RegressionResults = make([]regressionResult, len(timeframes))
 	r.rttInput = make(chan time.Duration)
+	r.slopescorer_short = *newSlopescorer()
+	r.slopescorer_long = *newSlopescorer()
 
 	go r.loopaddSentDataActual()
 
@@ -119,6 +124,9 @@ func (r *RTTMonitor) getRateStatus() rttStatus {
 	r.debug_func("RTTRegress-Shortterm", fmt.Sprintf("%f", r.RegressionResults[2].Slope))
 	r.debug_func("RTTRegress-Midterm", fmt.Sprintf("%f", r.RegressionResults[1].Slope))
 	r.debug_func("RTTRegress-Longterm", fmt.Sprintf("%f", r.RegressionResults[0].Slope))
+
+	r.debug_func("RTTRegress_slopescore_short", fmt.Sprintf("%f", r.slopescorer_short.score(shortterm_slope)))
+	r.debug_func("RTTRegress_slopescore_combined", fmt.Sprintf("%f", r.slopescorer_long.score(r.RegressionResults[1].Slope)))
 
 	if r.RegressionResults[2].Slope > r.RegressionResults[1].Slope*2 &&
 		r.RegressionResults[2].Slope > r.RegressionResults[0].Slope*4 &&
