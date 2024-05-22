@@ -205,6 +205,8 @@ func (r *RateMonitor) getRateStatus() rateStatus {
 
 	ratio := float64(longterm_slope) / float64(shortterm_slope)
 
+	r.debug_func("ratemonitor_getRateStatus_ratio", fmt.Sprintf("%f", ratio))
+
 	if ratio > 1.10 { // longterm rate was growing faster
 		return RATE_DECREASING
 	} else if ratio < 0.9 { // shortterm is growing more

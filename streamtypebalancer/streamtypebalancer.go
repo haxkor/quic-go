@@ -77,16 +77,16 @@ func FunctionForBalancerAndTracer(_ context.Context, p protocol.Perspective, con
 
 func NewBalancerAndTracer(w io.WriteCloser, p logging.Perspective, odcid protocol.ConnectionID) (*logging.ConnectionTracer, *Balancer) {
 	balancer := &Balancer{last_bidi_frame: time.Now()}
-	balancer.uni_cc_data.timeframe = time.Second * 1 / 4
-	balancer.uni_cc_data.allowed_bytes = 1_500_000 / 8 / 4
+	balancer.uni_cc_data.timeframe = time.Millisecond * 100
+	balancer.uni_cc_data.allowed_bytes = 100
 
-	balancer.bidirateMonitor = NewRateMonitor([]time.Duration{time.Second * 15, time.Second * 1})
+	balancer.bidirateMonitor = NewRateMonitor([]time.Duration{time.Second * 10, time.Millisecond * 200})
 	balancer.bidirateMonitor.debug_func = balancer.Debug
 
 	balancer.unirateMonitor = NewRateMonitor([]time.Duration{time.Second})
 	balancer.unirateMonitor.debug_func = balancer.Debug
 
-	balancer.rttMonitor = NewRTTMonitor([]time.Duration{time.Second * 3, time.Second * 1, time.Millisecond * 500})
+	balancer.rttMonitor = NewRTTMonitor([]time.Duration{time.Second * 3, time.Second * 1, time.Millisecond * 400})
 	balancer.rttMonitor.debug_func = balancer.Debug
 
 	t := qlog.NewConnectionTracer_tracer(w, p, odcid)
@@ -188,7 +188,7 @@ func NewBalancerAndTracer(w io.WriteCloser, p logging.Perspective, odcid protoco
 
 func (b *Balancer) LogMonitorResultsLoop() {
 	for {
-		time.Sleep(time.Millisecond * 200)
+		time.Sleep(time.Millisecond * 100)
 		b.LogMonitorResults()
 	}
 }
@@ -214,51 +214,58 @@ func (b *Balancer) UpdateUnirate() {
 	reason := ""
 
 	rateStatus := b.bidirateMonitor.getRateStatus()
+
 	switch rateStatus {
 	case RATE_STEADY:
 		b.Debug("UpdateUnirate", "STEADY")
-		uni_growth += .2
+		uni_growth += .1
 		// b.uni_cc_data.allowed_bytes = protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes) * 1.06)
 	case RATE_DECREASING:
 		b.Debug("UpdateUnirate", "DECREASING")
 		reason += "bidi rate decreasing, "
 		// b.uni_cc_data.allowed_bytes = protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes) * 0.90)
-		uni_growth -= 0.3
+		uni_growth -= 0.1
 	case RATE_INCREASING:
 		b.Debug("UpdateUnirate", "INCREASING")
+		uni_growth += .2
 		// all good
 	}
 
 	bitrate_ratio := float64(b.bidirateMonitor.GetBitrateWithinMediantimeframe()) / float64(b.bidirateMonitor.GetMaxMedian())
-	if bitrate_ratio < 0.7 {
+	if bitrate_ratio < 1 {
 		// b.uni_cc_data.allowed_bytes = protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes) * 0.80)
-		uni_growth -= 0.1
+		// uni_growth -= 0.2
+		uni_growth *= (bitrate_ratio * 1.5)
 		b.Debug("UpdateUnirate", "current bitrate smaller than median of max bitrates, decreasing")
 		reason += "bidirate smaller than median, "
 	}
 
 	b.rttMonitor.RegressAll()
 	rttStatus := b.rttMonitor.getRateStatus()
-	switch rttStatus {
-	case RTT_INCREASING:
+	if rttStatus < -0.05 {
 		b.Debug("UpdateUnirate", "RTT_INCREASING")
 		reason += "RTT increasing, "
-		// b.uni_cc_data.allowed_bytes = protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes) * 0.90)
-		uni_growth *= 0.8
-	default:
-		break
-
+		uni_growth *= (0.9 + rttStatus)
 	}
 
 	if reason != "" {
 		b.Debug("UpdateUnirate", fmt.Sprintf("reason: %s", reason))
 	}
 
+	//alles faktoren 0-1
+	//multiplizieren
+	//dann hat man den growthfactor
+	//das muss man jetzt noch irgendwie abflachen über die zeit
+
+	//if we are not using the full potential, dont grow the allowed rate further
 	if b.unirateMonitor.getBitrateWithin(b.uni_cc_data.timeframe) <
 		protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes)*0.9) {
-		uni_growth = min(1, uni_growth)
+		uni_growth = min(0.99, uni_growth)
 	}
-	b.uni_cc_data.allowed_bytes = protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes) * uni_growth)
+	b.uni_cc_data.allowed_bytes = max(10, protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes)*uni_growth))
+
+	b.Debug("UpdateUnirate_allowed_bytes", fmt.Sprintf("%d", b.uni_cc_data.allowed_bytes))
+	b.Debug("UpdateUnirate_growth", fmt.Sprintf("%f", uni_growth))
 
 }
 

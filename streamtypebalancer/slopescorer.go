@@ -9,7 +9,7 @@ type slopescorer struct {
 }
 
 func newSlopescorer() *slopescorer {
-	return &slopescorer{max_score: 1.}
+	return &slopescorer{}
 }
 
 func (s *slopescorer) score(val float64) float64 {
