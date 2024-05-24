@@ -20,6 +20,14 @@ import (
 	"github.com/quic-go/quic-go/qlog"
 )
 
+type growingStage int
+
+const (
+	UNI_INCREASING = iota
+	UNI_DECREASING
+	UNI_DECREASING_GENTLE
+)
+
 type SentTuple struct {
 	timestamp  time.Time
 	bytes_sent protocol.ByteCount
@@ -37,6 +45,8 @@ type Balancer struct {
 		mutex         sync.Mutex
 		timeframe     time.Duration
 		allowed_bytes protocol.ByteCount
+		lastmax       protocol.ByteCount
+		growing       growingStage
 	}
 
 	bidirateMonitor *RateMonitor
@@ -77,7 +87,7 @@ func FunctionForBalancerAndTracer(_ context.Context, p protocol.Perspective, con
 
 func NewBalancerAndTracer(w io.WriteCloser, p logging.Perspective, odcid protocol.ConnectionID) (*logging.ConnectionTracer, *Balancer) {
 	balancer := &Balancer{last_bidi_frame: time.Now()}
-	balancer.uni_cc_data.timeframe = time.Millisecond * 100
+	balancer.uni_cc_data.timeframe = time.Millisecond * 500
 	balancer.uni_cc_data.allowed_bytes = 100
 
 	balancer.bidirateMonitor = NewRateMonitor([]time.Duration{time.Second * 10, time.Millisecond * 200})
@@ -262,7 +272,45 @@ func (b *Balancer) UpdateUnirate() {
 		protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes)*0.9) {
 		uni_growth = min(0.99, uni_growth)
 	}
-	b.uni_cc_data.allowed_bytes = max(10, protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes)*uni_growth))
+
+	// new_allowed_bytes := max(10, protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes)*uni_growth))
+
+	// we are at a downward change
+	if uni_growth < 0.9 && b.uni_cc_data.growing == UNI_INCREASING {
+		// if we hit a different limit than last time, update
+		ratio := float64(b.uni_cc_data.lastmax) / (float64(b.uni_cc_data.allowed_bytes) * 1)
+		b.Debug("hit a limit, start to decrease, ratio: ", fmt.Sprintf("%f", ratio))
+		if !(0.7 < ratio && ratio < 1.2) {
+			// b.uni_cc_data.lastmax = protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes) * uni_growth)
+			b.uni_cc_data.lastmax = b.unirateMonitor.getBitrateWithin(b.uni_cc_data.timeframe)
+			b.Debug("updated lastmax:", fmt.Sprintf("%d", b.uni_cc_data.lastmax))
+			b.uni_cc_data.growing = UNI_DECREASING
+			b.Debug("UpdateUnirate-growing", "set to DECREASING")
+		} else { //we hit the same max as last time, lets be gentle in the decline
+			// old_allowed_bytes := new_allowed_bytes
+			// new_allowed_bytes = max(10, protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes)*0.8)) //*((1+uni_growth)/2)))
+			b.uni_cc_data.growing = UNI_DECREASING_GENTLE
+			b.Debug("UpdateUnirate-growing", "set to GENTLE")
+
+			// b.Debug("gentle decline", fmt.Sprintf("old %d, gentle %d", old_allowed_bytes, new_allowed_bytes))
+		}
+
+	} else if uni_growth > 1 {
+		b.uni_cc_data.growing = UNI_INCREASING
+		b.Debug("UpdateUnirate-growing", "set to INCREASING")
+	}
+
+	switch b.uni_cc_data.growing {
+	case UNI_INCREASING:
+		fallthrough
+	case UNI_DECREASING:
+		b.uni_cc_data.allowed_bytes = max(10, protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes)*uni_growth))
+
+	case UNI_DECREASING_GENTLE:
+		non_gentle := max(10, protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes)*uni_growth))
+		b.uni_cc_data.allowed_bytes = max(10, protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes)*0.9)) //*((1+uni_growth)/2)))
+		b.Debug("gentle decline", fmt.Sprintf("old %d, gentle %d", non_gentle, b.uni_cc_data.allowed_bytes))
+	}
 
 	b.Debug("UpdateUnirate_allowed_bytes", fmt.Sprintf("%d", b.uni_cc_data.allowed_bytes))
 	b.Debug("UpdateUnirate_growth", fmt.Sprintf("%f", uni_growth))
