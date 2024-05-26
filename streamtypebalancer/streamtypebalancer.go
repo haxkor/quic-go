@@ -24,6 +24,7 @@ type growingStage int
 
 const (
 	UNI_INCREASING = iota
+	UNI_INCREASING_SLOWLY
 	UNI_DECREASING
 	UNI_DECREASING_GENTLE
 )
@@ -234,7 +235,7 @@ func (b *Balancer) UpdateUnirate() {
 		b.Debug("UpdateUnirate", "DECREASING")
 		reason += "bidi rate decreasing, "
 		// b.uni_cc_data.allowed_bytes = protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes) * 0.90)
-		uni_growth -= 0.1
+		uni_growth -= 0.2
 	case RATE_INCREASING:
 		b.Debug("UpdateUnirate", "INCREASING")
 		uni_growth += .2
@@ -255,7 +256,7 @@ func (b *Balancer) UpdateUnirate() {
 	if rttStatus < -0.05 {
 		b.Debug("UpdateUnirate", "RTT_INCREASING")
 		reason += "RTT increasing, "
-		uni_growth *= (0.9 + rttStatus)
+		// uni_growth *= (1 + rttStatus/2)
 	}
 
 	if reason != "" {
@@ -276,7 +277,8 @@ func (b *Balancer) UpdateUnirate() {
 	// new_allowed_bytes := max(10, protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes)*uni_growth))
 
 	// we are at a downward change
-	if uni_growth < 0.9 && b.uni_cc_data.growing == UNI_INCREASING {
+	if uni_growth < 0.9 &&
+		(b.uni_cc_data.growing == UNI_INCREASING || b.uni_cc_data.growing == UNI_INCREASING_SLOWLY) {
 		// if we hit a different limit than last time, update
 		ratio := float64(b.uni_cc_data.lastmax) / (float64(b.uni_cc_data.allowed_bytes) * 1)
 		b.Debug("hit a limit, start to decrease, ratio: ", fmt.Sprintf("%f", ratio))
@@ -296,11 +298,23 @@ func (b *Balancer) UpdateUnirate() {
 		}
 
 	} else if uni_growth > 1 {
-		b.uni_cc_data.growing = UNI_INCREASING
-		b.Debug("UpdateUnirate-growing", "set to INCREASING")
+		if protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes)*2) > b.uni_cc_data.lastmax {
+			// update lastmax?
+			b.uni_cc_data.growing = UNI_INCREASING_SLOWLY
+			b.Debug("UpdateUnirate-growing", "set to INCREASING_SLOWLY")
+		} else {
+			b.uni_cc_data.growing = UNI_INCREASING
+			b.Debug("UpdateUnirate-growing", "set to INCREASING")
+		}
+
+	} else if uni_growth < 1 {
+		// b.uni_cc_data.growing = UNI_DECREASING
+		b.Debug("UpdateUnirate-growing", "set to DECREASING")
 	}
 
 	switch b.uni_cc_data.growing {
+	case UNI_INCREASING_SLOWLY:
+		b.uni_cc_data.allowed_bytes += 200
 	case UNI_INCREASING:
 		fallthrough
 	case UNI_DECREASING:
