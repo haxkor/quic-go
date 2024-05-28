@@ -91,7 +91,7 @@ func NewBalancerAndTracer(w io.WriteCloser, p logging.Perspective, odcid protoco
 	balancer.uni_cc_data.timeframe = time.Millisecond * 500
 	balancer.uni_cc_data.allowed_bytes = 100
 
-	balancer.bidirateMonitor = NewRateMonitor([]time.Duration{time.Second * 10, time.Millisecond * 200})
+	balancer.bidirateMonitor = NewRateMonitor([]time.Duration{time.Second * 5, time.Millisecond * 400})
 	balancer.bidirateMonitor.debug_func = balancer.Debug
 
 	balancer.unirateMonitor = NewRateMonitor([]time.Duration{time.Second})
@@ -221,25 +221,17 @@ func (b *Balancer) callRTTMonitor() {
 }
 
 func (b *Balancer) UpdateUnirate() {
-	uni_growth := 1.0
+	uni_growth := 1.3
 	reason := ""
 
 	rateStatus := b.bidirateMonitor.getRateStatus()
+	b.Debug("UpdateUnirate-rateStatus", fmt.Sprintf("%f", rateStatus))
 
-	switch rateStatus {
-	case RATE_STEADY:
-		b.Debug("UpdateUnirate", "STEADY")
-		uni_growth += .1
-		// b.uni_cc_data.allowed_bytes = protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes) * 1.06)
-	case RATE_DECREASING:
-		b.Debug("UpdateUnirate", "DECREASING")
-		reason += "bidi rate decreasing, "
-		// b.uni_cc_data.allowed_bytes = protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes) * 0.90)
-		uni_growth -= 0.2
-	case RATE_INCREASING:
-		b.Debug("UpdateUnirate", "INCREASING")
-		uni_growth += .2
-		// all good
+	// uni_growth = (3 + rateStatus) / 4
+	if rateStatus < 1 {
+		uni_growth *= (0.8 * rateStatus)
+	} else if rateStatus > 1.0 {
+		uni_growth *= min(rateStatus, 1.5)
 	}
 
 	bitrate_ratio := float64(b.bidirateMonitor.GetBitrateWithinMediantimeframe()) / float64(b.bidirateMonitor.GetMaxMedian())
@@ -253,10 +245,10 @@ func (b *Balancer) UpdateUnirate() {
 
 	b.rttMonitor.RegressAll()
 	rttStatus := b.rttMonitor.getRateStatus()
-	if rttStatus < -0.05 {
+	if rttStatus > 0.8 {
 		b.Debug("UpdateUnirate", "RTT_INCREASING")
 		reason += "RTT increasing, "
-		// uni_growth *= (1 + rttStatus/2)
+		uni_growth *= 0.7
 	}
 
 	if reason != "" {
@@ -298,7 +290,11 @@ func (b *Balancer) UpdateUnirate() {
 		}
 
 	} else if uni_growth > 1 {
-		if protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes)*2) > b.uni_cc_data.lastmax {
+
+		if b.uni_cc_data.allowed_bytes > b.uni_cc_data.lastmax {
+			b.uni_cc_data.lastmax = b.uni_cc_data.allowed_bytes
+			b.uni_cc_data.growing = UNI_INCREASING
+		} else if protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes)*2) > b.uni_cc_data.lastmax {
 			// update lastmax?
 			b.uni_cc_data.growing = UNI_INCREASING_SLOWLY
 			b.Debug("UpdateUnirate-growing", "set to INCREASING_SLOWLY")
@@ -310,6 +306,7 @@ func (b *Balancer) UpdateUnirate() {
 	} else if uni_growth < 1 {
 		// b.uni_cc_data.growing = UNI_DECREASING
 		b.Debug("UpdateUnirate-growing", "set to DECREASING")
+
 	}
 
 	switch b.uni_cc_data.growing {

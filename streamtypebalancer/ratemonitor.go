@@ -199,19 +199,12 @@ const (
 	RATE_DECREASING
 )
 
-func (r *RateMonitor) getRateStatus() rateStatus {
+func (r *RateMonitor) getRateStatus() float64 {
 	longterm_slope := r.RegressionResults[0].Slope
 	shortterm_slope := r.RegressionResults[len(r.RegressionResults)-1].Slope
 
-	ratio := float64(longterm_slope) / float64(shortterm_slope)
+	ratio := float64(shortterm_slope) / float64(longterm_slope)
 
 	r.debug_func("ratemonitor_getRateStatus_ratio", fmt.Sprintf("%f", ratio))
-
-	if ratio > 1.30 { // longterm rate was growing faster
-		return RATE_DECREASING
-	} else if ratio < 0.9 { // shortterm is growing more
-		return RATE_INCREASING
-	} else {
-		return RATE_STEADY
-	}
+	return ratio
 }
