@@ -235,10 +235,15 @@ func (b *Balancer) UpdateUnirate() {
 	}
 
 	bitrate_ratio := float64(b.bidirateMonitor.GetBitrateWithinMediantimeframe()) / float64(b.bidirateMonitor.GetMaxMedian())
-	if bitrate_ratio < 1 {
+	if bitrate_ratio < 0.5 {
+		uni_growth = -1
+		// b.uni_cc_data.allowed_bytes = 10
+		// b.uni_cc_data.lastmax = 10
+
+	} else if bitrate_ratio < 1 {
 		// b.uni_cc_data.allowed_bytes = protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes) * 0.80)
 		// uni_growth -= 0.2
-		uni_growth *= (bitrate_ratio * 1.5)
+		uni_growth *= (bitrate_ratio * bitrate_ratio)
 		b.Debug("UpdateUnirate", "current bitrate smaller than median of max bitrates, decreasing")
 		reason += "bidirate smaller than median, "
 	}
@@ -294,6 +299,7 @@ func (b *Balancer) UpdateUnirate() {
 		if b.uni_cc_data.allowed_bytes > b.uni_cc_data.lastmax {
 			b.uni_cc_data.lastmax = b.uni_cc_data.allowed_bytes
 			b.uni_cc_data.growing = UNI_INCREASING
+			b.Debug("updated lastmax:", fmt.Sprintf("%d", b.uni_cc_data.lastmax))
 		} else if protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes)*2) > b.uni_cc_data.lastmax {
 			// update lastmax?
 			b.uni_cc_data.growing = UNI_INCREASING_SLOWLY
@@ -309,9 +315,12 @@ func (b *Balancer) UpdateUnirate() {
 
 	}
 
+	b.Debug("updated lastmax:", fmt.Sprintf("%d", b.uni_cc_data.lastmax))
+
 	switch b.uni_cc_data.growing {
 	case UNI_INCREASING_SLOWLY:
-		b.uni_cc_data.allowed_bytes += 200
+		// b.uni_cc_data.allowed_bytes += 200
+		b.uni_cc_data.allowed_bytes = protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes) * (uni_growth + 29) / 30)
 	case UNI_INCREASING:
 		fallthrough
 	case UNI_DECREASING:
@@ -319,7 +328,7 @@ func (b *Balancer) UpdateUnirate() {
 
 	case UNI_DECREASING_GENTLE:
 		non_gentle := max(10, protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes)*uni_growth))
-		b.uni_cc_data.allowed_bytes = max(10, protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes)*0.9)) //*((1+uni_growth)/2)))
+		b.uni_cc_data.allowed_bytes = max(10, protocol.ByteCount(float64(b.uni_cc_data.allowed_bytes)*0.95)) //*((1+uni_growth)/2)))
 		b.Debug("gentle decline", fmt.Sprintf("old %d, gentle %d", non_gentle, b.uni_cc_data.allowed_bytes))
 	}
 
