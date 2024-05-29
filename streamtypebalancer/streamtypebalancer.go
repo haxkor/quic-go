@@ -29,6 +29,21 @@ const (
 	UNI_DECREASING_GENTLE
 )
 
+func growingStageToStr(s growingStage) string {
+	switch s {
+	case UNI_INCREASING:
+		return "UNI_INCREASING"
+	case UNI_INCREASING_SLOWLY:
+		return "UNI_INCREASING_SLOWLY"
+	case UNI_DECREASING:
+		return "UNI_DECREASING"
+	case UNI_DECREASING_GENTLE:
+		return "UNI_DECREASING_GENTLE"
+	default:
+		return "ERROR"
+	}
+}
+
 type SentTuple struct {
 	timestamp  time.Time
 	bytes_sent protocol.ByteCount
@@ -228,8 +243,8 @@ func (b *Balancer) UpdateUnirate() {
 	b.Debug("UpdateUnirate-rateStatus", fmt.Sprintf("%f", rateStatus))
 
 	// uni_growth = (3 + rateStatus) / 4
-	if rateStatus < 1 {
-		uni_growth *= (0.8 * rateStatus)
+	if rateStatus < 0.9 {
+		uni_growth *= (rateStatus * rateStatus)
 	} else if rateStatus > 1.0 {
 		uni_growth *= min(rateStatus, 1.5)
 	}
@@ -310,8 +325,13 @@ func (b *Balancer) UpdateUnirate() {
 		}
 
 	} else if uni_growth < 1 {
-		// b.uni_cc_data.growing = UNI_DECREASING
-		b.Debug("UpdateUnirate-growing", "set to DECREASING")
+		if uni_growth > 0.5 && b.uni_cc_data.growing == UNI_DECREASING_GENTLE {
+			// nothing to change
+			b.Debug("UpdateUnirate-growing", "staying at GENTLE")
+		} else if uni_growth < 0 {
+			b.uni_cc_data.growing = UNI_DECREASING //this changes everything
+			b.Debug("UpdateUnirate-growing", "set to DECREASING")
+		}
 
 	}
 
@@ -334,6 +354,7 @@ func (b *Balancer) UpdateUnirate() {
 
 	b.Debug("UpdateUnirate_allowed_bytes", fmt.Sprintf("%d", b.uni_cc_data.allowed_bytes))
 	b.Debug("UpdateUnirate_growth", fmt.Sprintf("%f", uni_growth))
+	b.Debug("UpdateUnirate_stage:", growingStageToStr(b.uni_cc_data.growing))
 
 }
 

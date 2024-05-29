@@ -87,14 +87,12 @@ func (r *RTTMonitor) RegressAll() {
 		if include_until+1 < len(r.timeframes) &&
 			now.Sub(sample.ts) < r.timeframes[include_until+1] {
 			include_until++
-			r.debug_func("RTTRegressAll", "including next!")
 		}
 		x, y := sample.toFloats()
 		for i := 0; i <= include_until; i++ {
 			regression_inputs[i].X.PushBack(x)
 			regression_inputs[i].Y.PushBack(y)
 		}
-		r.debug_func("RTTRegressAll", fmt.Sprintf("x %f y %f", x, y))
 	}
 
 	for i, reg_input := range regression_inputs {
@@ -105,7 +103,6 @@ func (r *RTTMonitor) RegressAll() {
 				len(reg_input.X.Iter()), b))
 		}
 	}
-	r.debug_func("RTTRegressAll", "done")
 
 }
 
