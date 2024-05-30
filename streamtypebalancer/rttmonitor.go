@@ -109,7 +109,7 @@ func (r *RTTMonitor) getRateStatus() float64 {
 	//  longterm_slope := r.RegressionResults[0].Slope
 	shortterm_slope := r.RegressionResults[len(r.RegressionResults)-1].Slope
 
-	score := r.slopescorer_short.score(r.RegressionResults[1].Slope)
+	score := r.slopescorer_short.score(shortterm_slope)
 	r.debug_func("RTTRegress_slopescore_short", fmt.Sprintf("%f", score))
 	r.debug_func("RTTRegress_slopescore_combined", fmt.Sprintf("%f", score))
 	return score
