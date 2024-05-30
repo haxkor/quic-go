@@ -71,7 +71,6 @@ func (r *RTTMonitor) PopOld(more_than time.Duration, since time.Time) {
 }
 
 func (r *RTTMonitor) RegressAll() {
-
 	now := time.Now()
 	r.PopOld(r.timeframes[0], now)
 
@@ -107,19 +106,11 @@ func (r *RTTMonitor) RegressAll() {
 }
 
 func (r *RTTMonitor) getRateStatus() float64 {
-	// longterm_slope := r.RegressionResults[0].Slope
+	//  longterm_slope := r.RegressionResults[0].Slope
 	shortterm_slope := r.RegressionResults[len(r.RegressionResults)-1].Slope
 
 	score := r.slopescorer_short.score(r.RegressionResults[1].Slope)
 	r.debug_func("RTTRegress_slopescore_short", fmt.Sprintf("%f", score))
 	r.debug_func("RTTRegress_slopescore_combined", fmt.Sprintf("%f", score))
 	return score
-
-	r.debug_func("RTTRegress-Shortterm", fmt.Sprintf("%f", r.RegressionResults[2].Slope))
-	r.debug_func("RTTRegress-Midterm", fmt.Sprintf("%f", r.RegressionResults[1].Slope))
-	r.debug_func("RTTRegress-Longterm", fmt.Sprintf("%f", r.RegressionResults[0].Slope))
-
-	r.debug_func("RTTRegress_slopescore_short", fmt.Sprintf("%f", r.slopescorer_short.score(shortterm_slope)))
-	r.debug_func("RTTRegress_slopescore_combined", fmt.Sprintf("%f", r.slopescorer_long.score(r.RegressionResults[1].Slope)))
-	return 0.1
 }

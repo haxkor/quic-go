@@ -9,7 +9,6 @@ import (
 	"net"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/quic-go/quic-go/internal/protocol"
@@ -44,11 +43,9 @@ func growingStageToStr(s growingStage) string {
 }
 
 type Balancer struct {
-	last_bidi_frame  time.Time
 	connectionTracer *logging.ConnectionTracer
 
 	uni_cc_data struct {
-		mutex         sync.Mutex
 		timeframe     time.Duration
 		allowed_bytes protocol.ByteCount
 		lastmax       protocol.ByteCount
@@ -92,7 +89,7 @@ func FunctionForBalancerAndTracer(_ context.Context, p protocol.Perspective, con
 }
 
 func NewBalancerAndTracer(w io.WriteCloser, p logging.Perspective, odcid protocol.ConnectionID) (*logging.ConnectionTracer, *Balancer) {
-	balancer := &Balancer{last_bidi_frame: time.Now()}
+	balancer := &Balancer{}
 	balancer.uni_cc_data.timeframe = time.Millisecond * 500
 	balancer.uni_cc_data.allowed_bytes = 100
 
