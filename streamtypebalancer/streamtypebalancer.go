@@ -42,17 +42,6 @@ func growingStageToStr(s growingStage) string {
 	}
 }
 
-type streamClassInfo struct {
-	rateMonitor *RateMonitor
-
-	cc_data struct {
-		timeframe     time.Duration
-		allowed_bytes protocol.ByteCount
-		lastmax       protocol.ByteCount
-		growing       growingStage
-	}
-}
-
 type Balancer struct {
 	connectionTracer *logging.ConnectionTracer
 
@@ -218,8 +207,6 @@ func NewBalancerAndTracer(w io.WriteCloser, p logging.Perspective, odcid protoco
 		},
 	}
 	balancer.connectionTracer = &connection_tracer
-
-	///
 	go balancer.LogMonitorResultsLoop()
 
 	return &connection_tracer, balancer
@@ -237,7 +224,7 @@ func (b *Balancer) UpdateUnirate() {
 	reason := ""
 
 	b.bidi_info.rateMonitor.RegressAll()
-	rateStatus := b.bidi_info.rateMonitor.getRateStatus()
+	rateStatus := b.bidi_info.getRateStatus()
 	b.Debug("UpdateUnirate-rateStatus", fmt.Sprintf("%f", rateStatus))
 
 	if rateStatus < 0.9 {
@@ -246,7 +233,7 @@ func (b *Balancer) UpdateUnirate() {
 		uni_growth *= min(rateStatus, 1.5)
 	}
 
-	bitrate_ratio := float64(b.bidi_info.rateMonitor.GetBitrateWithinMediantimeframe()) / float64(b.bidi_info.rateMonitor.GetMaxMedian())
+	bitrate_ratio := b.bidi_info.getCurrentbitrateToMax()
 	if bitrate_ratio < 0.5 {
 		uni_growth = -1
 	} else if bitrate_ratio < 1 {
@@ -319,11 +306,11 @@ func (b *Balancer) UpdateUnirate() {
 
 	switch b.reststreams.cc_data.growing {
 	case UNI_INCREASING_SLOWLY:
-		b.reststreams.cc_data.allowed_bytes = protocol.ByteCount(float64(b.reststreams.cc_data.allowed_bytes) * (uni_growth + 29) / 30)
+		b.reststreams.multiplyAllowedBytes((uni_growth + 29) / 30)
 	case UNI_DECREASING_GENTLE:
-		b.reststreams.cc_data.allowed_bytes = max(10, protocol.ByteCount(float64(b.reststreams.cc_data.allowed_bytes)*0.95))
+		b.reststreams.multiplyAllowedBytes(0.95)
 	default:
-		b.reststreams.cc_data.allowed_bytes = max(10, protocol.ByteCount(float64(b.reststreams.cc_data.allowed_bytes)*uni_growth))
+		b.reststreams.multiplyAllowedBytes(uni_growth)
 	}
 
 	b.Debug("updated lastmax:", fmt.Sprintf("%d", b.reststreams.cc_data.lastmax))
