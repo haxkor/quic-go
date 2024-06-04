@@ -84,9 +84,17 @@ func FunctionForBalancerAndTracer(_ context.Context, p protocol.Perspective, con
 
 }
 
+func (b *Balancer) addPriorityStream(id protocol.StreamID) {
+	b.stream_to_index[id] = 1
+
+}
+
 func NewBalancerAndTracer(w io.WriteCloser, p logging.Perspective, odcid protocol.ConnectionID) (*logging.ConnectionTracer, *Balancer) {
 	balancer := &Balancer{}
 
+	balancer.stream_to_index = make(map[protocol.StreamID]int)
+
+	// initialize both infos
 	rest_monitor := NewRateMonitor([]time.Duration{time.Second})
 	rest_monitor.debug_func = balancer.Debug
 	rest_info := streamClassInfo{rateMonitor: rest_monitor}
@@ -94,11 +102,7 @@ func NewBalancerAndTracer(w io.WriteCloser, p logging.Perspective, odcid protoco
 	rest_info.cc_data.allowed_bytes = 10
 	rest_info.cc_data.lastmax = 1
 	rest_info.cc_data.growing = UNI_INCREASING_SLOWLY
-
 	balancer.reststreams = rest_info
-
-	// balancer.uni_cc_data.timeframe = time.Millisecond * 500
-	// balancer.uni_cc_data.allowed_bytes = 100
 
 	bidirateMonitor := NewRateMonitor([]time.Duration{time.Second * 5, time.Millisecond * 400})
 	bidirateMonitor.debug_func = balancer.Debug
@@ -111,9 +115,10 @@ func NewBalancerAndTracer(w io.WriteCloser, p logging.Perspective, odcid protoco
 
 	balancer.bidi_info = bidi_info
 
-	// balancer.unirateMonitor = NewRateMonitor([]time.Duration{time.Second})
-	// balancer.unirateMonitor.debug_func = balancer.Debug
+	// add to list
+	balancer.streamclasses = []streamClassInfo{rest_info, bidi_info}
 
+	//monitor
 	balancer.rttMonitor = NewRTTMonitor([]time.Duration{time.Second * 3, time.Second * 1, time.Millisecond * 400})
 	balancer.rttMonitor.debug_func = balancer.Debug
 
@@ -340,10 +345,12 @@ func (b *Balancer) CanSendUniFrame(size protocol.ByteCount) bool {
 	}
 }
 
-func (b *Balancer) RegisterSentBytes(size protocol.ByteCount, streamtype protocol.StreamType) {
-	if streamtype == protocol.StreamTypeBidi {
-		b.bidi_info.rateMonitor.AddSentData(size)
-	} else if streamtype == protocol.StreamTypeUni {
-		b.reststreams.rateMonitor.AddSentData(size)
+func (b *Balancer) RegisterSentBytes(size protocol.ByteCount, streamid protocol.StreamID) {
+	which_info := b.stream_to_index[streamid]
+	if streamid.Type() == protocol.StreamTypeBidi {
+		which_info = 1
 	}
+	info := b.streamclasses[which_info]
+
+	info.addSentData(size)
 }

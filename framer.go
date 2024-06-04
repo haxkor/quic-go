@@ -210,7 +210,7 @@ func (f *framerI) AppendStreamFrames(frames []ackhandler.StreamFrame, maxLen pro
 		length += lengthNewFrame
 
 		if f.balancer != nil {
-			f.balancer.RegisterSentBytes(lengthNewFrame, id.Type())
+			f.balancer.RegisterSentBytes(lengthNewFrame, id)
 		}
 	}
 	f.mutex.Unlock()

@@ -41,3 +41,7 @@ func (sci *streamClassInfo) getCurrentbitrateToMax() float64 {
 func (sci *streamClassInfo) multiplyAllowedBytes(factor float64) {
 	sci.cc_data.allowed_bytes = max(10, protocol.ByteCount(float64(sci.cc_data.allowed_bytes)*(factor)))
 }
+
+func (sci *streamClassInfo) addSentData(size protocol.ByteCount) {
+	sci.rateMonitor.AddSentData(size)
+}
