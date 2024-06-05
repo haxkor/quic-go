@@ -30,6 +30,9 @@ type RTTMonitor struct {
 	RegressionResults []regressionResult
 
 	inputCounter int
+
+	slopescorer_short slopescorer
+	slopescorer_long  slopescorer
 }
 
 func NewRTTMonitor(timeframes []time.Duration) *RTTMonitor {
@@ -37,6 +40,8 @@ func NewRTTMonitor(timeframes []time.Duration) *RTTMonitor {
 	r.samples.Init(32)
 	r.RegressionResults = make([]regressionResult, len(timeframes))
 	r.rttInput = make(chan time.Duration)
+	r.slopescorer_short = *newSlopescorer()
+	r.slopescorer_long = *newSlopescorer()
 
 	go r.loopaddSentDataActual()
 
@@ -66,7 +71,6 @@ func (r *RTTMonitor) PopOld(more_than time.Duration, since time.Time) {
 }
 
 func (r *RTTMonitor) RegressAll() {
-
 	now := time.Now()
 	r.PopOld(r.timeframes[0], now)
 
@@ -82,14 +86,12 @@ func (r *RTTMonitor) RegressAll() {
 		if include_until+1 < len(r.timeframes) &&
 			now.Sub(sample.ts) < r.timeframes[include_until+1] {
 			include_until++
-			r.debug_func("RTTRegressAll", "including next!")
 		}
 		x, y := sample.toFloats()
 		for i := 0; i <= include_until; i++ {
 			regression_inputs[i].X.PushBack(x)
 			regression_inputs[i].Y.PushBack(y)
 		}
-		r.debug_func("RTTRegressAll", fmt.Sprintf("x %f y %f", x, y))
 	}
 
 	for i, reg_input := range regression_inputs {
@@ -100,38 +102,15 @@ func (r *RTTMonitor) RegressAll() {
 				len(reg_input.X.Iter()), b))
 		}
 	}
-	r.debug_func("RTTRegressAll", "done")
 
 }
 
-type rttStatus int
-
-const (
-	RTT_STEADY rttStatus = iota
-	RTT_INCREASING
-	RTT_DECREASING
-)
-
-func (r *RTTMonitor) getRateStatus() rttStatus {
-	longterm_slope := r.RegressionResults[0].Slope
+func (r *RTTMonitor) getRateStatus() float64 {
+	//  longterm_slope := r.RegressionResults[0].Slope
 	shortterm_slope := r.RegressionResults[len(r.RegressionResults)-1].Slope
 
-	r.debug_func("RTTRegress-Shortterm", fmt.Sprintf("%f", r.RegressionResults[2].Slope))
-	r.debug_func("RTTRegress-Midterm", fmt.Sprintf("%f", r.RegressionResults[1].Slope))
-	r.debug_func("RTTRegress-Longterm", fmt.Sprintf("%f", r.RegressionResults[0].Slope))
-
-	if r.RegressionResults[2].Slope > r.RegressionResults[1].Slope*2 &&
-		r.RegressionResults[2].Slope > r.RegressionResults[0].Slope*4 &&
-		r.RegressionResults[2].Slope > 5_000 {
-		r.debug_func("RTTRegress_getRate", "surge detected!")
-		return RTT_INCREASING
-	}
-
-	if longterm_slope < 0 && shortterm_slope < 0 {
-		// return RTT_DECREASING
-	} else if shortterm_slope > 0 {
-		return 5
-	}
-	return RTT_STEADY
-
+	score := r.slopescorer_short.score(shortterm_slope)
+	r.debug_func("RTTRegress_slopescore_short", fmt.Sprintf("%f", score))
+	r.debug_func("RTTRegress_slopescore_combined", fmt.Sprintf("%f", score))
+	return score
 }
