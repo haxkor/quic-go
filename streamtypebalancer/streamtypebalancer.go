@@ -84,6 +84,11 @@ func FunctionForBalancerAndTracer(_ context.Context, p protocol.Perspective, con
 
 }
 
+func (b *Balancer) addPriorityStream(id protocol.StreamID) {
+	b.stream_to_index[id] = 1
+
+}
+
 func NewBalancerAndTracer(w io.WriteCloser, p logging.Perspective, odcid protocol.ConnectionID) (*logging.ConnectionTracer, *Balancer) {
 	balancer := &Balancer{}
 
@@ -349,21 +354,7 @@ func (b *Balancer) RegisterSentBytes(size protocol.ByteCount, streamid protocol.
 
 	info.addSentData(size)
 }
-func (b *Balancer) reportOnStatus() {
-	difference := time.Since(b.last_bidi_frame)
-	msg := fmt.Sprintf("time since last bidiframe: %s\ncwnd: %d  bytesInFlight: %d",
-		difference.String(), b.cwnd, b.bytesInFlight)
-	b.connectionTracer.Debug("balancer status report:", msg)
-}
 
-func (b *Balancer) RegisterSentBytes(size protocol.ByteCount, streamtype protocol.StreamType) {
-	if streamtype == protocol.StreamTypeBidi {
-		// b.monitorBidiRate()
-
-		b.bidirateMonitor.AddSentData(size)
-
-	} else if streamtype == protocol.StreamTypeUni {
-		b.unibytesSentList.PushBack(SentTuple{time.Now(), size})
-		b.unirateMonitor.AddSentData(size)
-	}
+func (b *Balancer) Prioritize(streamid protocol.StreamID) {
+	b.stream_to_index[streamid] = 1
 }

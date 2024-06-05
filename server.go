@@ -683,7 +683,7 @@ func (s *baseServer) handleInitialImpl(p receivedPacket, hdr *wire.Header) error
 			s.tokenGenerator,
 			clientAddrValidated,
 			tracer,
-			balancer,
+			balancer, //make this Capital? or again interface problems?
 			tracingID,
 			s.logger,
 			hdr.Version,

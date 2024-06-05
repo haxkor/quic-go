@@ -2397,3 +2397,8 @@ func (s *connection) NextConnection() Connection {
 	s.streamsMap.UseResetMaps()
 	return s
 }
+
+func (s *connection) PrioritizeStream(id protocol.StreamID) error {
+	s.Balancer.Prioritize(id)
+	return nil
+}
