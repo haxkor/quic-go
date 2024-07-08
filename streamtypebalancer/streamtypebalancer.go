@@ -311,7 +311,7 @@ func (b *Balancer) UpdateUnirate() {
 
 	switch b.reststreams.cc_data.growing {
 	case UNI_INCREASING_SLOWLY:
-		b.reststreams.multiplyAllowedBytes((uni_growth + 29) / 30)
+		b.reststreams.multiplyAllowedBytes((uni_growth + 9) / 10)
 	case UNI_DECREASING_GENTLE:
 		b.reststreams.multiplyAllowedBytes(0.95)
 	default:
@@ -351,6 +351,7 @@ func (b *Balancer) RegisterSentBytes(size protocol.ByteCount, streamid protocol.
 	// 	which_info = 1
 	// }
 	info := b.streamclasses[which_info]
+	b.Debug("RegisterSentBytes:", fmt.Sprintf("which_info: %d", which_info))
 
 	info.addSentData(size)
 }
