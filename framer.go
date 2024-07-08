@@ -33,9 +33,8 @@ type framerI struct {
 
 	streamGetter streamGetter
 
-	activeStreams   map[protocol.StreamID]struct{}
-	uni_streamQueue ringbuffer.RingBuffer[protocol.StreamID]
-	bi_streamQueue  ringbuffer.RingBuffer[protocol.StreamID]
+	activeStreams map[protocol.StreamID]struct{}
+	streamQueue   ringbuffer.RingBuffer[protocol.StreamID]
 
 	controlFrameMutex sync.Mutex
 	controlFrames     []wire.Frame
@@ -48,17 +47,16 @@ var _ framer = &framerI{}
 
 func newFramer(streamGetter streamGetter, tracer *logging.ConnectionTracer, balancer *streamtypebalancer.Balancer) framer {
 	return &framerI{
-		streamGetter:    streamGetter,
-		activeStreams:   make(map[protocol.StreamID]struct{}),
-		uni_streamQueue: ringbuffer.RingBuffer[protocol.StreamID]{Tracer: tracer, Unidirectional: true},
-		bi_streamQueue:  ringbuffer.RingBuffer[protocol.StreamID]{Tracer: tracer, Unidirectional: false},
-		balancer:        balancer,
+		streamGetter:  streamGetter,
+		activeStreams: make(map[protocol.StreamID]struct{}),
+		streamQueue:   ringbuffer.RingBuffer[protocol.StreamID]{Tracer: tracer, Unidirectional: true},
+		balancer:      balancer,
 	}
 }
 
 func (f *framerI) HasData() bool {
 	f.mutex.Lock()
-	hasData := !f.uni_streamQueue.Empty() || !f.bi_streamQueue.Empty()
+	hasData := !f.streamQueue.Empty()
 	f.mutex.Unlock()
 	if hasData {
 		return true
@@ -117,44 +115,32 @@ func (f *framerI) AppendControlFrames(frames []ackhandler.Frame, maxLen protocol
 func (f *framerI) AddActiveStream(id protocol.StreamID) {
 	f.mutex.Lock()
 	if _, ok := f.activeStreams[id]; !ok {
-		if id.Type() == protocol.StreamTypeUni {
-			f.uni_streamQueue.PushBack(id)
-		} else if id.Type() == protocol.StreamTypeBidi {
-			f.bi_streamQueue.PushBack(id)
-		} else {
-			panic("unknown streamtype")
-		}
+		f.streamQueue.PushBack(id)
 		f.activeStreams[id] = struct{}{}
 	}
 	f.mutex.Unlock()
 }
 
 func (f *framerI) getStreamQueueLen() int {
-	return f.bi_streamQueue.Len() + f.uni_streamQueue.Len()
+	return f.streamQueue.Len()
 }
 
 func (f *framerI) StreamQueuePop() protocol.StreamID {
-	if !f.bi_streamQueue.Empty() {
-		return f.bi_streamQueue.PopFront()
-	} else if !f.uni_streamQueue.Empty() {
-		return f.uni_streamQueue.PopFront()
-	} else {
-		panic("StreamQueuePop called but both queues are empty!")
+	if f.streamQueue.Empty() {
+		panic("StreamQueuePop called but queue is empty!")
 	}
+
+	len := f.streamQueue.Len()
+	var id protocol.StreamID
+
+	for i := 0; i < len; i++ {
+		id = f.StreamQueuePop()
+	}
+	return id
 }
 
 func (f *framerI) StreamQueuePushBack(id protocol.StreamID) {
-	if id.Type() == protocol.StreamTypeBidi {
-		f.bi_streamQueue.PushBack(id)
-		if f.balancer != nil {
-			f.balancer.Debug("StreamQueuePushBack", "pusing back bidi frame")
-		}
-	} else if id.Type() == protocol.StreamTypeUni {
-		f.uni_streamQueue.PushBack(id)
-	} else {
-		panic("StreamQueuePushBack received unknown StreamType")
-	}
-
+	f.streamQueue.PushBack(id)
 }
 
 func (f *framerI) AppendStreamFrames(frames []ackhandler.StreamFrame, maxLen protocol.ByteCount, v protocol.Version) ([]ackhandler.StreamFrame, protocol.ByteCount) {
@@ -231,8 +217,8 @@ func (f *framerI) Handle0RTTRejection() error {
 	defer f.mutex.Unlock()
 
 	f.controlFrameMutex.Lock()
-	f.uni_streamQueue.Clear()
-	f.bi_streamQueue.Clear()
+	f.streamQueue.Clear()
+	// f.bi_streamQueue.Clear()
 	for id := range f.activeStreams {
 		delete(f.activeStreams, id)
 	}
