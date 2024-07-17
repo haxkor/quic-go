@@ -125,6 +125,12 @@ func (f *framerI) getStreamQueueLen() int {
 	return f.streamQueue.Len()
 }
 
+func (f *framerI) debug(name, msg string) {
+	if f.balancer != nil {
+		f.balancer.Debug(name, msg)
+	}
+}
+
 func (f *framerI) StreamQueuePop() protocol.StreamID {
 	if f.streamQueue.Empty() {
 		panic("StreamQueuePop called but queue is empty!")
@@ -133,9 +139,16 @@ func (f *framerI) StreamQueuePop() protocol.StreamID {
 	len := f.streamQueue.Len()
 	var id protocol.StreamID
 
+	f.debug("StreamQueuePop", "new loop")
 	for i := 0; i < len; i++ {
-		id = f.StreamQueuePop()
+		f.debug("StreamQueuePop", "looping")
+		id = f.streamQueue.PopFront()
+		if f.balancer != nil && f.balancer.IsPriority(id) {
+			return id
+		}
+		f.streamQueue.PushBack(id)
 	}
+	id = f.streamQueue.PopFront()
 	return id
 }
 
