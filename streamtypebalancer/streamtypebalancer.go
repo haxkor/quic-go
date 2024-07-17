@@ -225,7 +225,7 @@ func (b *Balancer) LogMonitorResultsLoop() {
 }
 
 func (b *Balancer) UpdateUnirate() {
-	uni_growth := 1.3
+	uni_growth := 1.2
 	reason := ""
 
 	b.bidi_info.rateMonitor.RegressAll()
@@ -269,6 +269,7 @@ func (b *Balancer) UpdateUnirate() {
 		protocol.ByteCount(float64(b.reststreams.cc_data.allowed_bytes)*0.9) {
 		uni_growth = min(0.99, uni_growth)
 	}
+	uni_growth = min(1.5, uni_growth)
 
 	// we are at a downward change
 	if uni_growth < 0.9 &&
@@ -311,11 +312,11 @@ func (b *Balancer) UpdateUnirate() {
 
 	switch b.reststreams.cc_data.growing {
 	case UNI_INCREASING_SLOWLY:
-		b.reststreams.multiplyAllowedBytes((uni_growth + 9) / 10)
+		b.reststreams.multiplyAllowedBytes((uni_growth + 10) / 11)
 	case UNI_DECREASING_GENTLE:
 		b.reststreams.multiplyAllowedBytes(0.95)
 	default:
-		b.reststreams.multiplyAllowedBytes(uni_growth)
+		b.reststreams.multiplyAllowedBytes((uni_growth) / 1)
 	}
 
 	b.Debug("updated lastmax:", fmt.Sprintf("%d", b.reststreams.cc_data.lastmax))
@@ -358,4 +359,9 @@ func (b *Balancer) RegisterSentBytes(size protocol.ByteCount, streamid protocol.
 
 func (b *Balancer) Prioritize(streamid protocol.StreamID) {
 	b.stream_to_index[streamid] = 1
+}
+
+func (b *Balancer) IsPriority(streamid protocol.StreamID) bool {
+	_, found := b.stream_to_index[streamid]
+	return found
 }
