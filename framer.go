@@ -170,7 +170,7 @@ func (f *framerI) AppendStreamFrames(frames []ackhandler.StreamFrame, maxLen pro
 		}
 		id := f.StreamQueuePop()
 
-		if id.Type() == protocol.StreamTypeUni && f.balancer != nil {
+		if f.balancer != nil && !f.balancer.IsPriority(id) {
 			if !f.balancer.CanSendUniFrame(remainingLen) {
 				f.StreamQueuePushBack(id)
 				break
