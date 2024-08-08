@@ -99,7 +99,7 @@ func NewBalancerAndTracer(w io.WriteCloser, p logging.Perspective, odcid protoco
 	rest_monitor.debug_func = balancer.Debug
 	rest_info := streamClassInfo{rateMonitor: rest_monitor}
 	rest_info.cc_data.timeframe = time.Second
-	rest_info.cc_data.allowed_bytes = 10
+	rest_info.cc_data.allowed_bytes = 40
 	rest_info.cc_data.lastmax = 1
 	rest_info.cc_data.growing = UNI_INCREASING_SLOWLY
 	balancer.reststreams = rest_info
