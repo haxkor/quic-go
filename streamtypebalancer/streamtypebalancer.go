@@ -365,3 +365,21 @@ func (b *Balancer) IsPriority(streamid protocol.StreamID) bool {
 	_, found := b.stream_to_index[streamid]
 	return found
 }
+
+func (b *Balancer) GetPossibleThroughput() protocol.ByteCount {
+	sum := b.bidi_info.cc_data.allowed_bytes + b.reststreams.cc_data.allowed_bytes
+
+	b.Debug("GetPossibleThroughput, bidiinfolastsecond", fmt.Sprintf("%d",
+		b.bidi_info.rateMonitor.getBitrateWithin(time.Second)*8/1000))
+
+	sum = b.bidi_info.rateMonitor.getBitrateWithin(time.Second) + b.reststreams.rateMonitor.getBitrateWithin(time.Second)
+	sum = sum * 8 / 1_000
+
+	// persecondfactor := (time.Second / b.bidi_info.cc_data.timeframe)
+
+	b.Debug("GetPossibleThroughput, val:", fmt.Sprintf("%d", sum))
+	return sum
+
+	// b.Debug("GetPossibleThroughput", fmt.Sprintf("normalized: %d", sum*protocol.ByteCount(persecondfactor)))
+	// return (sum * protocol.ByteCount(persecondfactor) / 1000)
+}

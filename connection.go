@@ -2402,3 +2402,7 @@ func (s *connection) PrioritizeStream(id protocol.StreamID) error {
 	s.Balancer.Prioritize(id)
 	return nil
 }
+
+func (s *connection) GetPossibleThroughput() protocol.ByteCount {
+	return s.Balancer.GetPossibleThroughput()
+}

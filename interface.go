@@ -203,6 +203,8 @@ type Connection interface {
 
 	// prioritize the stream in the streambalancer
 	PrioritizeStream(protocol.StreamID) error
+
+	GetPossibleThroughput() protocol.ByteCount
 }
 
 // An EarlyConnection is a connection that is handshaking.
