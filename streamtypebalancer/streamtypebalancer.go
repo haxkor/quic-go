@@ -312,7 +312,7 @@ func (b *Balancer) UpdateUnirate() {
 
 	switch b.reststreams.cc_data.growing {
 	case UNI_INCREASING_SLOWLY:
-		b.reststreams.multiplyAllowedBytes((uni_growth + 10) / 11)
+		b.reststreams.multiplyAllowedBytes((uni_growth + 7) / 8)
 	case UNI_DECREASING_GENTLE:
 		b.reststreams.multiplyAllowedBytes(0.95)
 	default:
