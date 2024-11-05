@@ -3,7 +3,7 @@
 This is the coding part of my master thesis.
 
 The goal was to implement stream prioritization in quic-go.
-Media streams were successfully prioritized and the added code provided significant benefits.
+Media streams were successfully prioritized and the added code provided significant benefits (see slides).
 
 The main code of this project can be found in the `streamtypebalancer` package.
 
