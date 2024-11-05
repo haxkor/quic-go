@@ -1,3 +1,16 @@
+## Master Thesis Project
+
+This is the coding part of my master thesis.
+
+The goal was to implement stream prioritization in quic-go.
+Media streams were successfully prioritized and the added code provided significant benefits.
+
+The main code of this project can be found in the `streamtypebalancer` package.
+
+The thesis can be found [here](thesis.pdf).
+The corresponding slideset is [here](slides.pdf).
+
+
 # A QUIC implementation in pure Go
 
 <img src="docs/quic.png" width=303 height=124>
